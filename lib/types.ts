@@ -1,0 +1,35 @@
+export type ProposalStatus = "Active" | "Upcoming" | "Closed" | "Executed";
+export type ProposalPriority = "High Signal" | "Treasury Risk" | "Routine" | "Strategic";
+
+export interface Proposal {
+  id: string;
+  title: string;
+  protocol: string;
+  spaceSlug: string;
+  status: ProposalStatus;
+  publishedAt: string;
+  closesAt: string;
+  heat: number;
+  importance: ProposalPriority;
+  summary: string;
+  aiSummary: string;
+  readableContent: string;
+  facts: string[];
+  risks: string[];
+  discussionUrl: string;
+  proposalUrl: string;
+}
+
+export interface Space {
+  slug: string;
+  name: string;
+  tagline: string;
+  verified: boolean;
+  followers: number;
+  proposals: number;
+  categories: string[];
+  activityScore: number;
+  website: string;
+  forum: string;
+  summary: string;
+}
