@@ -1,7 +1,10 @@
+import { listProposals } from "@/lib/repository";
 import { ProposalsBrowser } from "@/components/proposals-browser";
 import { SectionHeading } from "@/components/section-heading";
 
-export default function ProposalsPage() {
+export default async function ProposalsPage() {
+  const proposals = await listProposals({ sort: "time" });
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <SectionHeading
@@ -10,7 +13,7 @@ export default function ProposalsPage() {
         description="Search, filter, sort, and switch reading modes to move from high-level scanning into detailed proposal analysis."
       />
       <div className="mt-10">
-        <ProposalsBrowser />
+        <ProposalsBrowser proposals={proposals} />
       </div>
     </section>
   );

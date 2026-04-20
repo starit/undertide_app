@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { LayoutGrid, List, Search } from "lucide-react";
-import { proposals } from "@/lib/data";
-import { ProposalStatus } from "@/lib/types";
+import { Proposal, ProposalStatus } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setProposalView } from "@/store/ui-slice";
 import { ProposalCard } from "@/components/proposal-card";
@@ -13,7 +12,7 @@ import { Input } from "@/components/ui/input";
 const statusOptions: Array<ProposalStatus | "All"> = ["All", "Active", "Upcoming", "Closed", "Executed"];
 const sortOptions = ["Time", "Heat", "Importance"] as const;
 
-export function ProposalsBrowser({ initialSpaceSlug }: { initialSpaceSlug?: string }) {
+export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: Proposal[]; initialSpaceSlug?: string }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.proposalView);
   const [query, setQuery] = useState("");
@@ -37,7 +36,7 @@ export function ProposalsBrowser({ initialSpaceSlug }: { initialSpaceSlug?: stri
       if (sort === "Importance") return b.importance.localeCompare(a.importance);
       return +new Date(b.publishedAt) - +new Date(a.publishedAt);
     });
-  }, [initialSpaceSlug, query, sort, status]);
+  }, [initialSpaceSlug, proposals, query, sort, status]);
 
   const visible = filtered.slice(0, visibleCount);
 

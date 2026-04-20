@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { proposals, spaces } from "@/lib/data";
+import { Proposal, Space } from "@/lib/types";
 import { ProposalCard } from "@/components/proposal-card";
 import { SectionHeading } from "@/components/section-heading";
 import { SpaceCard } from "@/components/space-card";
 import { Input } from "@/components/ui/input";
 
-export function SearchResults() {
+export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; spaces: Space[] }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(2);
 

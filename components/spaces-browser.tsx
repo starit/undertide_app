@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { LayoutGrid, List, Search } from "lucide-react";
-import { spaces } from "@/lib/data";
+import { Space } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setSpaceView } from "@/store/ui-slice";
 import { SpaceCard } from "@/components/space-card";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 
 const categoryOptions = ["All", "Layer 2", "Treasury", "Risk", "Protocol", "DEX", "Identity", "Public Goods"] as const;
 
-export function SpacesBrowser() {
+export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
   const [query, setQuery] = useState("");

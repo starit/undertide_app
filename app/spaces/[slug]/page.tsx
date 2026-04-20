@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
-import { getSpace } from "@/lib/data";
+import { getSpaceBySlug, listSpaceProposals } from "@/lib/repository";
 import { ProposalsBrowser } from "@/components/proposals-browser";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function SpaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const space = getSpace(slug);
+  const [space, proposals] = await Promise.all([getSpaceBySlug(slug), listSpaceProposals(slug, { sort: "time" })]);
 
   if (!space) notFound();
 
@@ -72,7 +72,7 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
           <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">Proposal List</span>
           <h2 className="font-serif text-4xl">Proposals in this space</h2>
         </div>
-        <ProposalsBrowser initialSpaceSlug={space.slug} />
+        <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} />
       </div>
     </section>
   );

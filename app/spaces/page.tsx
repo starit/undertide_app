@@ -1,7 +1,10 @@
+import { listSpaces } from "@/lib/repository";
 import { SectionHeading } from "@/components/section-heading";
 import { SpacesBrowser } from "@/components/spaces-browser";
 
-export default function SpacesPage() {
+export default async function SpacesPage() {
+  const spaces = await listSpaces({ sort: "activity" });
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <SectionHeading
@@ -10,7 +13,7 @@ export default function SpacesPage() {
         description="Search governance spaces by category, verification, activity, or follower scale, then drill into protocol-specific proposal streams."
       />
       <div className="mt-10">
-        <SpacesBrowser />
+        <SpacesBrowser spaces={spaces} />
       </div>
     </section>
   );

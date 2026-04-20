@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ArrowUpRight, Link2 } from "lucide-react";
-import { getProposal } from "@/lib/data";
+import { getProposalById } from "@/lib/repository";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 
 export default async function ProposalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const proposal = getProposal(id);
+  const proposal = await getProposalById(id);
 
   if (!proposal) notFound();
 

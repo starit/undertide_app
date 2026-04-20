@@ -1,7 +1,10 @@
+import { listProposals, listSpaces } from "@/lib/repository";
 import { SearchResults } from "@/components/search-results";
 import { SectionHeading } from "@/components/section-heading";
 
-export default function SearchPage() {
+export default async function SearchPage() {
+  const [proposals, spaces] = await Promise.all([listProposals({ sort: "time" }), listSpaces({ sort: "activity" })]);
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <SectionHeading
@@ -10,7 +13,7 @@ export default function SearchPage() {
         description="Search governance topics, protocols, risk themes, and proposal content from one interface."
       />
       <div className="mt-10">
-        <SearchResults />
+        <SearchResults proposals={proposals} spaces={spaces} />
       </div>
     </section>
   );
