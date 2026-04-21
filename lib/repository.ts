@@ -1,6 +1,5 @@
 import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
-  proposalEnrichments,
   proposalTranslations,
   snapshotProposals,
   snapshotSyncRuns,
@@ -8,12 +7,12 @@ import {
   snapshotSpaces,
 } from "@/db/drizzle-schema";
 import { getDb, hasDatabase } from "@/lib/db";
-import { Proposal, ProposalPriority, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
+import { Proposal, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
 
 type ProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
-  sort?: "time" | "heat" | "importance";
+  sort?: "time" | "heat";
   spaceSlug?: string;
   limit?: number;
 };
@@ -56,7 +55,6 @@ type SlimSpaceRecord = Pick<
 type ProposalRecord = {
   proposal: typeof snapshotProposals.$inferSelect;
   space: typeof snapshotSpaces.$inferSelect;
-  enrichment: typeof proposalEnrichments.$inferSelect | null;
 };
 
 type ProposalTranslationRecord = typeof proposalTranslations.$inferSelect;
@@ -118,7 +116,7 @@ export async function getProposalDetail(
     ...proposal,
     title: translation.title || proposal.title,
     summary: translation.summary || proposal.summary,
-    readableContent: translation.body || proposal.readableContent,
+    body: translation.body || proposal.body,
     translation,
   };
 }
@@ -254,10 +252,9 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<ProposalReco
     ];
 
     const baseQuery = db
-      .select({ proposal: snapshotProposals, space: snapshotSpaces, enrichment: proposalEnrichments })
+      .select({ proposal: snapshotProposals, space: snapshotSpaces })
       .from(snapshotProposals)
       .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-      .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id))
       .where(and(...conditions))
       .orderBy(desc(snapshotProposals.createdTs));
 
@@ -278,10 +275,9 @@ async function fetchProposalById(id: string): Promise<ProposalRecord | null> {
   try {
     const db = getDb();
     const [record] = await db
-      .select({ proposal: snapshotProposals, space: snapshotSpaces, enrichment: proposalEnrichments })
+      .select({ proposal: snapshotProposals, space: snapshotSpaces })
       .from(snapshotProposals)
       .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-      .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id))
       .where(eq(snapshotProposals.id, id))
       .limit(1);
     return record ?? null;
@@ -380,13 +376,9 @@ function mapSpace(space: SlimSpaceRecord): Space {
 }
 
 function mapProposal(record: ProposalRecord): Proposal {
-  const { proposal, space, enrichment } = record;
+  const { proposal, space } = record;
   const body = normalizeText(proposal.body) || "";
   const summary = excerpt(body, 180) || proposal.title;
-  const readableContent = enrichment?.readableContent ?? body;
-  const aiSummary = enrichment?.aiSummary ?? summary;
-  const facts = parseStringArray(enrichment?.facts);
-  const riskLabels = parseStringArray(enrichment?.riskLabels);
   const proposalUrl = getSnapshotProposalUrl(space.id, proposal.id);
 
   return {
@@ -400,17 +392,13 @@ function mapProposal(record: ProposalRecord): Proposal {
     heat: computeProposalHeat(proposal.scoresTotal, space.memberCount),
     votesCount: proposal.votesCount,
     type: proposal.type ?? null,
-    importance: mapImportanceLabel(enrichment?.importanceLabel, proposal.title, body),
     labels: parseStringArray(proposal.labels),
     quorum: proposal.quorum != null ? Number(proposal.quorum) : null,
     quorumType: proposal.quorumType ?? null,
     app: proposal.app ?? null,
     discussion: proposal.discussion || null,
     summary,
-    aiSummary,
-    readableContent,
-    facts,
-    risks: riskLabels,
+    body: proposal.body ?? null,
     discussionUrl: proposal.discussion || proposalUrl,
     proposalUrl,
   };
@@ -500,18 +488,6 @@ function mapProposalStatus(state: string): ProposalStatus {
   return "Executed";
 }
 
-function mapImportanceLabel(label: string | null | undefined, title: string, body: string): ProposalPriority {
-  if (label === "High Signal" || label === "Treasury Risk" || label === "Routine" || label === "Strategic") {
-    return label;
-  }
-
-  const content = `${title} ${body}`.toLowerCase();
-  if (/(treasury|budget|grant|funding|allocation)/.test(content)) return "Treasury Risk";
-  if (/(deploy|upgrade|migration|framework|launch|strategy)/.test(content)) return "Strategic";
-  if (/(risk|parameter|safety|oracle|liquidation)/.test(content)) return "High Signal";
-  return "Routine";
-}
-
 function parseStringArray(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === "string");
@@ -549,7 +525,6 @@ function applyProposalFilters(items: Proposal[], query: ProposalFilters) {
   // spaceSlug, status, q are already filtered in SQL; only complex sorts need in-memory work
   const sorted = [...items].sort((a, b) => {
     if (query.sort === "heat") return b.heat - a.heat;
-    if (query.sort === "importance") return b.importance.localeCompare(a.importance);
     return +new Date(b.publishedAt) - +new Date(a.publishedAt);
   });
 

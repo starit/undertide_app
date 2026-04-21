@@ -4,19 +4,12 @@ import { Proposal } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-function importanceVariant(importance: Proposal["importance"]) {
-  if (importance === "Treasury Risk") return "warning";
-  if (importance === "High Signal") return "signal";
-  return "default";
-}
-
 export function ProposalCard({ proposal, compact = false }: { proposal: Proposal; compact?: boolean }) {
   return (
     <Card className="h-full">
       <CardHeader className={compact ? "p-5" : undefined}>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="muted">{proposal.protocol}</Badge>
-          <Badge variant={importanceVariant(proposal.importance)}>{proposal.importance}</Badge>
           <Badge>{proposal.status}</Badge>
         </div>
         <CardTitle className={compact ? "text-xl" : undefined}>{proposal.title}</CardTitle>

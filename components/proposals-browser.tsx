@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const statusOptions: Array<ProposalStatus | "All"> = ["All", "Active", "Upcoming", "Closed", "Executed"];
-const sortOptions = ["Time", "Heat", "Importance"] as const;
+const sortOptions = ["Time", "Heat"] as const;
 
 export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: Proposal[]; initialSpaceSlug?: string }) {
   const dispatch = useAppDispatch();
@@ -33,7 +33,6 @@ export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: P
 
     return [...base].sort((a, b) => {
       if (sort === "Heat") return b.heat - a.heat;
-      if (sort === "Importance") return b.importance.localeCompare(a.importance);
       return +new Date(b.publishedAt) - +new Date(a.publishedAt);
     });
   }, [initialSpaceSlug, proposals, query, sort, status]);

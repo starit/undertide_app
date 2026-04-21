@@ -15,7 +15,7 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
     const normalized = query.toLowerCase();
     return {
       proposals: proposals.filter((proposal) =>
-        [proposal.title, proposal.protocol, proposal.summary, proposal.aiSummary].join(" ").toLowerCase().includes(normalized)
+        [proposal.title, proposal.protocol, proposal.summary].join(" ").toLowerCase().includes(normalized)
       ),
       spaces: spaces.filter((space) =>
         [space.name, space.summary, space.tagline, ...space.categories].join(" ").toLowerCase().includes(normalized)

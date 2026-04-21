@@ -130,19 +130,6 @@ export const snapshotProposals = pgTable(
   })
 );
 
-export const proposalEnrichments = pgTable("proposal_enrichments", {
-  proposalId: text("proposal_id")
-    .primaryKey()
-    .references(() => snapshotProposals.id, { onDelete: "cascade" }),
-  readableContent: text("readable_content"),
-  aiSummary: text("ai_summary"),
-  importanceLabel: text("importance_label"),
-  riskLabels: jsonb("risk_labels").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  facts: jsonb("facts").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  locale: text("locale").notNull().default("en"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 export const proposalTranslations = pgTable(
   "proposal_translations",
@@ -197,7 +184,6 @@ export const schema = {
   snapshotSpaces,
   snapshotSpaceMembers,
   snapshotProposals,
-  proposalEnrichments,
   proposalTranslations,
   snapshotSyncState,
   snapshotSyncRuns,

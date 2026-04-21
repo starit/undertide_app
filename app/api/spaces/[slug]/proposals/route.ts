@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const proposals = await listSpaceProposals(slug, {
     q: searchParams.get("q") ?? undefined,
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
-    sort: (searchParams.get("sort") as "time" | "heat" | "importance" | null) ?? undefined,
+    sort: (searchParams.get("sort") as "time" | "heat" | null) ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
   });
 

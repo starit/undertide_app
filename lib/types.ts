@@ -1,5 +1,4 @@
 export type ProposalStatus = "Active" | "Upcoming" | "Closed" | "Executed";
-export type ProposalPriority = "High Signal" | "Treasury Risk" | "Routine" | "Strategic";
 
 export interface Proposal {
   id: string;
@@ -12,17 +11,13 @@ export interface Proposal {
   heat: number;
   votesCount: number;
   type: string | null;
-  importance: ProposalPriority;
   labels: string[];
   quorum: number | null;
   quorumType: string | null;
   app: string | null;
   discussion: string | null;
   summary: string;
-  aiSummary: string;
-  readableContent: string;
-  facts: string[];
-  risks: string[];
+  body: string | null;
   discussionUrl: string;
   proposalUrl: string;
 }
