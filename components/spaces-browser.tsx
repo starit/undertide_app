@@ -16,7 +16,7 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
   const view = useAppSelector((state) => state.ui.spaceView);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof categoryOptions)[number]>("All");
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [sort, setSort] = useState<"Activity" | "Followers">("Activity");
   const [results, setResults] = useState(spaces);
   const [isLoading, setIsLoading] = useState(false);

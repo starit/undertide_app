@@ -138,9 +138,7 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
 
     const conditions: (SQL | undefined)[] = [
       typeof query.verified === "boolean"
-        ? query.verified
-          ? sql`jsonb_array_length(${snapshotSpaces.admins}) > 0`
-          : sql`jsonb_array_length(${snapshotSpaces.admins}) = 0`
+        ? eq(snapshotSpaces.verified, query.verified)
         : undefined,
       query.q ? ilike(snapshotSpaces.name, `%${query.q.trim()}%`) : undefined,
     ];

@@ -12,6 +12,13 @@ create table if not exists snapshot_spaces (
   twitter text,
   github text,
   coingecko text,
+  website text,
+  discussions text,
+  flagged boolean not null default false,
+  flag_code integer not null default 0,
+  hibernated boolean not null default false,
+  turbo boolean not null default false,
+  active_proposals integer not null default 0,
   admins jsonb not null default '[]'::jsonb,
   member_count integer not null default 0,
   proposal_count integer not null default 0,
@@ -20,19 +27,18 @@ create table if not exists snapshot_spaces (
   plugins jsonb,
   raw jsonb not null,
   snapshot_created_at timestamptz,
-  first_seen_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
-  last_synced_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create index if not exists idx_snapshot_spaces_network on snapshot_spaces(network);
-create index if not exists idx_snapshot_spaces_last_seen_at on snapshot_spaces(last_seen_at desc);
+create index if not exists idx_snapshot_spaces_created_at on snapshot_spaces(created_at desc);
 
 create table if not exists snapshot_space_members (
   space_id text not null references snapshot_spaces(id) on delete cascade,
   member_address text not null,
-  first_seen_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   primary key (space_id, member_address)
 );
 
@@ -51,6 +57,18 @@ create table if not exists snapshot_proposals (
   start_at timestamptz generated always as (to_timestamp(start_ts)) stored,
   end_at timestamptz generated always as (to_timestamp(end_ts)) stored,
   created_at timestamptz generated always as (to_timestamp(created_ts)) stored,
+  ipfs text,
+  type text,
+  discussion text,
+  flagged boolean not null default false,
+  flag_code integer not null default 0,
+  symbol text,
+  labels jsonb not null default '[]'::jsonb,
+  quorum numeric,
+  quorum_type text,
+  privacy text,
+  link text,
+  app text,
   snapshot_block text,
   state text not null,
   author text not null,
@@ -58,6 +76,8 @@ create table if not exists snapshot_proposals (
   scores jsonb,
   scores_by_strategy jsonb,
   scores_total numeric,
+  scores_state text,
+  scores_total_value numeric,
   scores_updated_ts bigint,
   scores_updated_at timestamptz generated always as (
     case
@@ -65,12 +85,18 @@ create table if not exists snapshot_proposals (
       else to_timestamp(scores_updated_ts)
     end
   ) stored,
+  votes_count integer not null default 0,
+  updated_ts bigint,
+  updated_at timestamptz generated always as (
+    case
+      when updated_ts is null then null
+      else to_timestamp(updated_ts)
+    end
+  ) stored,
   strategies jsonb not null default '[]'::jsonb,
   plugins jsonb,
   raw jsonb not null,
-  first_seen_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
-  last_synced_at timestamptz not null default now()
+  synced_at timestamptz not null default now()
 );
 
 create index if not exists idx_snapshot_proposals_space_id on snapshot_proposals(space_id);
@@ -87,6 +113,7 @@ create table if not exists proposal_enrichments (
   risk_labels jsonb not null default '[]'::jsonb,
   facts jsonb not null default '[]'::jsonb,
   locale text not null default 'en',
+  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
@@ -111,18 +138,20 @@ create table if not exists snapshot_sync_state (
   last_cursor text,
   last_created_ts bigint,
   last_error text,
+  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create table if not exists snapshot_sync_runs (
   id bigserial primary key,
   entity_type text not null,
-  started_at timestamptz not null default now(),
-  finished_at timestamptz,
   status text not null,
   rows_upserted integer not null default 0,
-  error text
+  error text,
+  finished_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
 );
 
 create index if not exists idx_snapshot_sync_runs_entity_type on snapshot_sync_runs(entity_type);
-create index if not exists idx_snapshot_sync_runs_started_at on snapshot_sync_runs(started_at desc);
+create index if not exists idx_snapshot_sync_runs_created_at on snapshot_sync_runs(created_at desc);

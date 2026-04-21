@@ -3,7 +3,6 @@ import { neon } from "@neondatabase/serverless";
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
-  proposalEnrichments,
   proposalTranslations,
   snapshotProposals,
   snapshotSpaces,
@@ -48,7 +47,6 @@ const db = drizzle(sql, {
   schema: {
     snapshotProposals,
     snapshotSpaces,
-    proposalEnrichments,
     proposalTranslations,
   },
 });
@@ -90,8 +88,8 @@ async function main() {
         locale,
         spaceName: item.space.name,
         title: item.proposal.title,
-        body: item.enrichment?.readableContent ?? item.proposal.body ?? "",
-        summary: item.enrichment?.aiSummary ?? excerpt(item.proposal.body ?? "", 220),
+        body: item.proposal.body ?? "",
+        summary: excerpt(item.proposal.body ?? "", 220),
       });
 
       await db
@@ -127,12 +125,10 @@ async function getSourceProposals(limit: number, proposalId?: string) {
   const query = db
     .select({
       proposal: snapshotProposals,
-      enrichment: proposalEnrichments,
       space: snapshotSpaces,
     })
     .from(snapshotProposals)
-    .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-    .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id));
+    .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id));
 
   if (proposalId) {
     return query.where(eq(snapshotProposals.id, proposalId)).limit(1);

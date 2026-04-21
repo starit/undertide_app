@@ -6,11 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function SpaceCard({ space }: { space: Space }) {
+  const href = `/spaces/${space.slug}`;
+
   return (
     <Card className="h-full">
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <Link href={href} className="flex items-center gap-4 rounded-sm outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring">
             <Avatar>
               {space.avatar ? <AvatarImage src={space.avatar} alt={space.name} /> : null}
               <AvatarFallback>{space.name.slice(0, 2)}</AvatarFallback>
@@ -20,7 +22,7 @@ export function SpaceCard({ space }: { space: Space }) {
               <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{space.slug}</p>
               <p className="mt-2 text-sm text-muted-foreground">{space.tagline}</p>
             </div>
-          </div>
+          </Link>
           {space.verified ? <BadgeCheck className="size-5 text-[#1d3a32]" /> : null}
         </div>
       </CardHeader>
@@ -45,7 +47,7 @@ export function SpaceCard({ space }: { space: Space }) {
             <p className="mt-1 font-semibold">{space.proposals}</p>
           </div>
         </div>
-        <Link href={`/spaces/${space.slug}`} className="inline-flex items-center gap-2 text-sm font-medium">
+        <Link href={href} className="inline-flex items-center gap-2 text-sm font-medium">
           Profile <ArrowUpRight className="size-4" />
         </Link>
       </CardFooter>
