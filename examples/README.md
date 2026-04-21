@@ -8,7 +8,7 @@ Start the local app first:
 
 Then run:
 
-`node --experimental-strip-types examples/benchmark-spaces-api.ts`
+`npx tsx examples/benchmark-spaces-api.ts`
 
 Optional flags:
 

@@ -15,12 +15,15 @@ const SPACE_PAGE_SIZE = 50;
 const PROPOSAL_PAGE_SIZE = 100;
 const REQUEST_RETRY_LIMIT = 4;
 const REQUEST_RETRY_BASE_MS = 1500;
+const DATABASE_RETRY_LIMIT = 4;
+const DATABASE_RETRY_BASE_MS = 1000;
 
 const args = new Set(process.argv.slice(2));
 const options = {
   full: args.has("--full"),
   spacesOnly: args.has("--spaces-only"),
   proposalsOnly: args.has("--proposals-only"),
+  spacesSkip: readNumberArg("--spaces-skip"),
 };
 
 const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
@@ -60,16 +63,16 @@ async function runSync(entityType: string, task: () => Promise<number>) {
 
   try {
     const rowsUpserted = await task();
-    await finishSyncRun(runId, "success", rowsUpserted);
-    await upsertSyncState(entityType, {
+    await safelyFinishSyncRun(runId, "success", rowsUpserted);
+    await safelyUpsertSyncState(entityType, {
       last_success_at: new Date().toISOString(),
       last_error: null,
     });
     console.log(`[${entityType}] synced ${rowsUpserted} rows`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await finishSyncRun(runId, "failed", 0, message);
-    await upsertSyncState(entityType, {
+    await safelyFinishSyncRun(runId, "failed", 0, message);
+    await safelyUpsertSyncState(entityType, {
       last_error: message,
     });
     throw error;
@@ -78,7 +81,7 @@ async function runSync(entityType: string, task: () => Promise<number>) {
 
 async function syncSpaces() {
   const previousState = options.full ? null : await getSyncState("spaces");
-  let skip = options.full ? 0 : parseCursorSkip(previousState?.lastCursor);
+  let skip = options.full ? 0 : options.spacesSkip ?? parseCursorSkip(previousState?.lastCursor);
   let upserted = 0;
 
   while (true) {
@@ -124,7 +127,7 @@ async function syncSpaces() {
     }
 
     skip += spaces.length;
-    await upsertSyncState("spaces", {
+    await safelyUpsertSyncState("spaces", {
       last_cursor: String(skip),
     });
     console.log(`[spaces] fetched ${skip}`);
@@ -132,7 +135,7 @@ async function syncSpaces() {
     if (spaces.length < SPACE_PAGE_SIZE) break;
   }
 
-  await upsertSyncState("spaces", {
+  await safelyUpsertSyncState("spaces", {
     last_cursor: null,
   });
 
@@ -214,7 +217,7 @@ async function syncProposals() {
 
   await refreshSpaceProposalCounts(Array.from(touchedSpaceIds));
 
-  await upsertSyncState("proposals", {
+  await safelyUpsertSyncState("proposals", {
     last_created_ts: highestCreatedTs || null,
   });
 
@@ -265,73 +268,109 @@ async function fetchGraphQL<T>(query: string, variables: Record<string, unknown>
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+async function withDatabaseRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= DATABASE_RETRY_LIMIT; attempt += 1) {
+    try {
+      const result = await operation();
+
+      if (attempt > 0) {
+        console.log(`[db] recovered ${label} after retry ${attempt}`);
+      }
+
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (attempt === DATABASE_RETRY_LIMIT || !isRetryableDatabaseError(error)) {
+        break;
+      }
+
+      const waitMs = DATABASE_RETRY_BASE_MS * 2 ** attempt;
+      console.warn(`[db] ${label} failed (attempt ${attempt + 1}/${DATABASE_RETRY_LIMIT + 1}): ${stringifyError(error)}`);
+      console.warn(`[db] retrying ${label} in ${waitMs}ms`);
+      await sleep(waitMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function upsertSpace(space: SnapshotSpace) {
   const sanitizedSpace = sanitizeValue(space);
 
-  await db
-    .insert(snapshotSpaces)
-    .values({
-      id: sanitizedSpace.id,
-      name: sanitizedSpace.name ?? sanitizedSpace.id,
-      about: sanitizedSpace.about ?? null,
-      network: sanitizedSpace.network ?? null,
-      symbol: sanitizedSpace.symbol ?? null,
-      admins: sanitizedSpace.admins ?? [],
-      memberCount: Array.isArray(sanitizedSpace.members) ? sanitizedSpace.members.length : 0,
-      proposalCount: 0,
-      strategies: sanitizedSpace.strategies ?? [],
-      filters: sanitizedSpace.filters ?? null,
-      plugins: sanitizedSpace.plugins ?? null,
-      raw: sanitizedSpace,
-      lastSeenAt: drizzleSql`now()`,
-      lastSyncedAt: drizzleSql`now()`,
-    })
-    .onConflictDoUpdate({
-      target: snapshotSpaces.id,
-      set: {
+  await withDatabaseRetry(`upsertSpace(${sanitizedSpace.id})`, async () => {
+    await db
+      .insert(snapshotSpaces)
+      .values({
+        id: sanitizedSpace.id,
         name: sanitizedSpace.name ?? sanitizedSpace.id,
         about: sanitizedSpace.about ?? null,
         network: sanitizedSpace.network ?? null,
         symbol: sanitizedSpace.symbol ?? null,
         admins: sanitizedSpace.admins ?? [],
         memberCount: Array.isArray(sanitizedSpace.members) ? sanitizedSpace.members.length : 0,
+        proposalCount: 0,
         strategies: sanitizedSpace.strategies ?? [],
         filters: sanitizedSpace.filters ?? null,
         plugins: sanitizedSpace.plugins ?? null,
         raw: sanitizedSpace,
         lastSeenAt: drizzleSql`now()`,
         lastSyncedAt: drizzleSql`now()`,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: snapshotSpaces.id,
+        set: {
+          name: sanitizedSpace.name ?? sanitizedSpace.id,
+          about: sanitizedSpace.about ?? null,
+          network: sanitizedSpace.network ?? null,
+          symbol: sanitizedSpace.symbol ?? null,
+          admins: sanitizedSpace.admins ?? [],
+          memberCount: Array.isArray(sanitizedSpace.members) ? sanitizedSpace.members.length : 0,
+          strategies: sanitizedSpace.strategies ?? [],
+          filters: sanitizedSpace.filters ?? null,
+          plugins: sanitizedSpace.plugins ?? null,
+          raw: sanitizedSpace,
+          lastSeenAt: drizzleSql`now()`,
+          lastSyncedAt: drizzleSql`now()`,
+        },
+      });
+  });
 }
 
 async function refreshSpaceProposalCounts(spaceIds: string[]) {
   if (spaceIds.length === 0) return;
 
-  const counts = await db
-    .select({
-      spaceId: snapshotProposals.spaceId,
-      proposalCount: count(),
-    })
-    .from(snapshotProposals)
-    .where(inArray(snapshotProposals.spaceId, spaceIds))
-    .groupBy(snapshotProposals.spaceId);
+  const counts = await withDatabaseRetry("refreshSpaceProposalCounts.select", async () =>
+    db
+      .select({
+        spaceId: snapshotProposals.spaceId,
+        proposalCount: count(),
+      })
+      .from(snapshotProposals)
+      .where(inArray(snapshotProposals.spaceId, spaceIds))
+      .groupBy(snapshotProposals.spaceId)
+  );
 
   const countsBySpaceId = new Map(counts.map((entry) => [entry.spaceId, entry.proposalCount]));
 
   for (const spaceId of spaceIds) {
-    await db
-      .update(snapshotSpaces)
-      .set({
-        proposalCount: countsBySpaceId.get(spaceId) ?? 0,
-        lastSyncedAt: drizzleSql`now()`,
-      })
-      .where(eq(snapshotSpaces.id, spaceId));
+    await withDatabaseRetry(`refreshSpaceProposalCounts.update(${spaceId})`, async () => {
+      await db
+        .update(snapshotSpaces)
+        .set({
+          proposalCount: countsBySpaceId.get(spaceId) ?? 0,
+          lastSyncedAt: drizzleSql`now()`,
+        })
+        .where(eq(snapshotSpaces.id, spaceId));
+    });
   }
 }
 
 async function replaceSpaceMembers(spaceId: string, members: string[]) {
-  await db.delete(snapshotSpaceMembers).where(eq(snapshotSpaceMembers.spaceId, spaceId));
+  await withDatabaseRetry(`replaceSpaceMembers.delete(${spaceId})`, async () => {
+    await db.delete(snapshotSpaceMembers).where(eq(snapshotSpaceMembers.spaceId, spaceId));
+  });
 
   if (!Array.isArray(members) || members.length === 0) return;
 
@@ -340,22 +379,24 @@ async function replaceSpaceMembers(spaceId: string, members: string[]) {
   const chunkSize = 500;
   for (let index = 0; index < sanitizedMembers.length; index += chunkSize) {
     const chunk = sanitizedMembers.slice(index, index + chunkSize);
-    await db
-      .insert(snapshotSpaceMembers)
-      .values(
-        chunk.map((member) => ({
-          spaceId,
-          memberAddress: member,
-          firstSeenAt: drizzleSql`now()`,
-          lastSeenAt: drizzleSql`now()`,
-        }))
-      )
-      .onConflictDoUpdate({
-        target: [snapshotSpaceMembers.spaceId, snapshotSpaceMembers.memberAddress],
-        set: {
-          lastSeenAt: drizzleSql`now()`,
-        },
-      });
+    await withDatabaseRetry(`replaceSpaceMembers.insert(${spaceId})#${index / chunkSize + 1}`, async () => {
+      await db
+        .insert(snapshotSpaceMembers)
+        .values(
+          chunk.map((member) => ({
+            spaceId,
+            memberAddress: member,
+            firstSeenAt: drizzleSql`now()`,
+            lastSeenAt: drizzleSql`now()`,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: [snapshotSpaceMembers.spaceId, snapshotSpaceMembers.memberAddress],
+          set: {
+            lastSeenAt: drizzleSql`now()`,
+          },
+        });
+    });
   }
 }
 
@@ -363,34 +404,11 @@ async function upsertProposal(proposal: SnapshotProposal) {
   const sanitizedProposal = sanitizeValue(proposal);
   const scoresTotal = normalizeNumericValue(sanitizedProposal.scores_total);
 
-  await db
-    .insert(snapshotProposals)
-    .values({
-      id: sanitizedProposal.id,
-      spaceId: sanitizedProposal.space.id,
-      title: sanitizedProposal.title ?? sanitizedProposal.id,
-      body: sanitizedProposal.body ?? null,
-      choices: sanitizedProposal.choices ?? [],
-      startTs: Number(sanitizedProposal.start ?? 0),
-      endTs: Number(sanitizedProposal.end ?? 0),
-      createdTs: Number(sanitizedProposal.created ?? 0),
-      snapshotBlock: sanitizedProposal.snapshot ?? null,
-      state: sanitizedProposal.state ?? "unknown",
-      author: sanitizedProposal.author ?? "",
-      network: sanitizedProposal.network ?? null,
-      scores: sanitizedProposal.scores ?? null,
-      scoresByStrategy: sanitizedProposal.scores_by_strategy ?? null,
-      scoresTotal,
-      scoresUpdatedTs: sanitizedProposal.scores_updated ? Number(sanitizedProposal.scores_updated) : null,
-      strategies: sanitizedProposal.strategies ?? [],
-      plugins: sanitizedProposal.plugins ?? null,
-      raw: sanitizedProposal,
-      lastSeenAt: drizzleSql`now()`,
-      lastSyncedAt: drizzleSql`now()`,
-    })
-    .onConflictDoUpdate({
-      target: snapshotProposals.id,
-      set: {
+  await withDatabaseRetry(`upsertProposal(${sanitizedProposal.id})`, async () => {
+    await db
+      .insert(snapshotProposals)
+      .values({
+        id: sanitizedProposal.id,
         spaceId: sanitizedProposal.space.id,
         title: sanitizedProposal.title ?? sanitizedProposal.id,
         body: sanitizedProposal.body ?? null,
@@ -411,20 +429,47 @@ async function upsertProposal(proposal: SnapshotProposal) {
         raw: sanitizedProposal,
         lastSeenAt: drizzleSql`now()`,
         lastSyncedAt: drizzleSql`now()`,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: snapshotProposals.id,
+        set: {
+          spaceId: sanitizedProposal.space.id,
+          title: sanitizedProposal.title ?? sanitizedProposal.id,
+          body: sanitizedProposal.body ?? null,
+          choices: sanitizedProposal.choices ?? [],
+          startTs: Number(sanitizedProposal.start ?? 0),
+          endTs: Number(sanitizedProposal.end ?? 0),
+          createdTs: Number(sanitizedProposal.created ?? 0),
+          snapshotBlock: sanitizedProposal.snapshot ?? null,
+          state: sanitizedProposal.state ?? "unknown",
+          author: sanitizedProposal.author ?? "",
+          network: sanitizedProposal.network ?? null,
+          scores: sanitizedProposal.scores ?? null,
+          scoresByStrategy: sanitizedProposal.scores_by_strategy ?? null,
+          scoresTotal,
+          scoresUpdatedTs: sanitizedProposal.scores_updated ? Number(sanitizedProposal.scores_updated) : null,
+          strategies: sanitizedProposal.strategies ?? [],
+          plugins: sanitizedProposal.plugins ?? null,
+          raw: sanitizedProposal,
+          lastSeenAt: drizzleSql`now()`,
+          lastSyncedAt: drizzleSql`now()`,
+        },
+      });
+  });
 }
 
 async function startSyncRun(entityType: string) {
-  const rows = await db
-    .insert(snapshotSyncRuns)
-    .values({
-      entityType,
-      status: "running",
-      startedAt: drizzleSql`now()`,
-      rowsUpserted: 0,
-    })
-    .returning({ id: snapshotSyncRuns.id });
+  const rows = await withDatabaseRetry(`startSyncRun(${entityType})`, async () =>
+    db
+      .insert(snapshotSyncRuns)
+      .values({
+        entityType,
+        status: "running",
+        startedAt: drizzleSql`now()`,
+        rowsUpserted: 0,
+      })
+      .returning({ id: snapshotSyncRuns.id })
+  );
 
   return rows[0]?.id;
 }
@@ -432,23 +477,27 @@ async function startSyncRun(entityType: string) {
 async function finishSyncRun(id: number | undefined, status: string, rowsUpserted: number, error: string | null = null) {
   if (!id) return;
 
-  await db
-    .update(snapshotSyncRuns)
-    .set({
-      finishedAt: drizzleSql`now()`,
-      status,
-      rowsUpserted,
-      error,
-    })
-    .where(eq(snapshotSyncRuns.id, id));
+  await withDatabaseRetry(`finishSyncRun(${id})`, async () => {
+    await db
+      .update(snapshotSyncRuns)
+      .set({
+        finishedAt: drizzleSql`now()`,
+        status,
+        rowsUpserted,
+        error,
+      })
+      .where(eq(snapshotSyncRuns.id, id));
+  });
 }
 
 async function getSyncState(entityType: string) {
-  const rows = await db
-    .select()
-    .from(snapshotSyncState)
-    .where(eq(snapshotSyncState.entityType, entityType))
-    .limit(1);
+  const rows = await withDatabaseRetry(`getSyncState(${entityType})`, async () =>
+    db
+      .select()
+      .from(snapshotSyncState)
+      .where(eq(snapshotSyncState.entityType, entityType))
+      .limit(1)
+  );
 
   return rows[0] ?? null;
 }
@@ -465,26 +514,62 @@ async function upsertSyncState(
   const previous = (await getSyncState(entityType)) ?? {};
   const lastSuccessAt = normalizeDateValue(patch.last_success_at ?? previous.lastSuccessAt ?? null);
 
-  await db
-    .insert(snapshotSyncState)
-    .values({
-      entityType,
-      lastSuccessAt,
-      lastCursor: patch.last_cursor ?? previous.lastCursor ?? null,
-      lastCreatedTs: patch.last_created_ts ?? previous.lastCreatedTs ?? null,
-      lastError: patch.last_error ?? null,
-      updatedAt: drizzleSql`now()`,
-    })
-    .onConflictDoUpdate({
-      target: snapshotSyncState.entityType,
-      set: {
+  await withDatabaseRetry(`upsertSyncState(${entityType})`, async () => {
+    await db
+      .insert(snapshotSyncState)
+      .values({
+        entityType,
         lastSuccessAt,
         lastCursor: patch.last_cursor ?? previous.lastCursor ?? null,
         lastCreatedTs: patch.last_created_ts ?? previous.lastCreatedTs ?? null,
         lastError: patch.last_error ?? null,
         updatedAt: drizzleSql`now()`,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: snapshotSyncState.entityType,
+        set: {
+          lastSuccessAt,
+          lastCursor: patch.last_cursor ?? previous.lastCursor ?? null,
+          lastCreatedTs: patch.last_created_ts ?? previous.lastCreatedTs ?? null,
+          lastError: patch.last_error ?? null,
+          updatedAt: drizzleSql`now()`,
+        },
+      });
+  });
+}
+
+async function safelyFinishSyncRun(id: number | undefined, status: string, rowsUpserted: number, error: string | null = null) {
+  try {
+    await finishSyncRun(id, status, rowsUpserted, error);
+  } catch (finishError) {
+    console.warn(`[sync-run] failed to persist run status for ${id ?? "unknown"}: ${stringifyError(finishError)}`);
+  }
+}
+
+async function safelyUpsertSyncState(
+  entityType: string,
+  patch: {
+    last_success_at?: string | null;
+    last_cursor?: string | null;
+    last_created_ts?: number | null;
+    last_error?: string | null;
+  }
+) {
+  try {
+    await upsertSyncState(entityType, patch);
+  } catch (stateError) {
+    console.warn(`[sync-state] failed to persist ${entityType} state: ${stringifyError(stateError)}`);
+  }
+}
+
+function isRetryableDatabaseError(error: unknown) {
+  const message = stringifyError(error).toLowerCase();
+  return /fetch failed|error connecting to database|connection|timeout|temporar|network|econn|etimedout|socket/.test(message);
+}
+
+function stringifyError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 type SnapshotStrategy = {
@@ -562,6 +647,17 @@ function parseCursorSkip(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function readNumberArg(flag: string) {
+  const index = process.argv.indexOf(flag);
+  if (index === -1) return null;
+
+  const raw = process.argv[index + 1];
+  if (!raw) return null;
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function sleep(ms: number) {

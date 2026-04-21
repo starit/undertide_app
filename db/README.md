@@ -63,8 +63,9 @@ Use `db:push` only for rapid local iteration, not as the main production migrati
 - Snapshot sync entrypoints:
   - `pnpm sync:snapshot`
   - `pnpm sync:snapshot:full`
-  - `node --experimental-strip-types scripts/sync-snapshot.ts --spaces-only`
-  - `node --experimental-strip-types scripts/sync-snapshot.ts --proposals-only`
+  - `npx tsx scripts/sync-snapshot.ts --spaces-only`
+  - `npx tsx scripts/sync-snapshot.ts --proposals-only`
+  - `npx tsx scripts/sync-snapshot.ts --spaces-only --spaces-skip 39200`
   - `pnpm backfill:space-proposal-count`
 - Proposal translation table:
   - `proposal_translations`
