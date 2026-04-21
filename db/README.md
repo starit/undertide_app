@@ -39,3 +39,29 @@ This project uses **Drizzle + Neon** for schema and migration management.
 4. Run `pnpm db:migrate`
 
 Use `db:push` only for rapid local iteration, not as the main production migration path.
+
+## Recent Changes
+
+- Switched project package management to `pnpm` and standardized database commands around `pnpm`.
+- Added Drizzle configuration in `drizzle.config.ts` and adopted `db/drizzle-schema.ts` as the typed schema source.
+- Generated the first Drizzle-managed migration under `db/migrations/drizzle`.
+- Kept the handcrafted initial SQL migration `db/migrations/0001_snapshot_ingest.sql` as a readable baseline reference.
+- Added Snapshot ingest tables for:
+  - `snapshot_spaces`
+  - `snapshot_space_members`
+  - `snapshot_proposals`
+  - `proposal_enrichments`
+  - `snapshot_sync_state`
+  - `snapshot_sync_runs`
+- Added a Snapshot sync script at `scripts/sync-snapshot.mjs`.
+- The Snapshot sync script now lives at `scripts/sync-snapshot.ts` and reuses `db/drizzle-schema.ts`.
+- The sync script now uses Drizzle queries for database reads and writes instead of raw handwritten SQL statements.
+- Current sync behavior:
+  - `spaces` are synced by paginated fetch with resumable progress stored in `snapshot_sync_state.last_cursor`.
+  - `proposals` support incremental sync using `snapshot_sync_state.last_created_ts`.
+  - Snapshot API requests use automatic retry with exponential backoff for transient failures.
+- Snapshot sync entrypoints:
+  - `pnpm sync:snapshot`
+  - `pnpm sync:snapshot:full`
+  - `node --experimental-strip-types scripts/sync-snapshot.ts --spaces-only`
+  - `node --experimental-strip-types scripts/sync-snapshot.ts --proposals-only`

@@ -1,76 +1,11 @@
-import { spaces as mockSpaces, proposals as mockProposals } from "@/lib/data";
-import { getSql, hasDatabase } from "@/lib/db";
+import { count, eq } from "drizzle-orm";
+import {
+  proposalEnrichments,
+  snapshotProposals,
+  snapshotSpaces,
+} from "@/db/drizzle-schema";
+import { getDb, hasDatabase } from "@/lib/db";
 import { Proposal, ProposalPriority, ProposalStatus, Space } from "@/lib/types";
-
-type SpaceRow = {
-  slug: string;
-  name: string;
-  tagline: string;
-  verified: boolean;
-  followers: number;
-  proposals: number;
-  categories: string[];
-  activity_score: number;
-  website: string;
-  forum: string;
-  summary: string;
-};
-
-type ProposalRow = {
-  id: string;
-  title: string;
-  protocol: string;
-  space_slug: string;
-  status: ProposalStatus;
-  published_at: string | Date;
-  closes_at: string | Date;
-  heat: number;
-  importance: ProposalPriority;
-  summary: string;
-  ai_summary: string;
-  readable_content: string;
-  facts: string[];
-  risks: string[];
-  discussion_url: string;
-  proposal_url: string;
-};
-
-function mapSpace(row: SpaceRow): Space {
-  return {
-    slug: row.slug,
-    name: row.name,
-    tagline: row.tagline,
-    verified: row.verified,
-    followers: row.followers,
-    proposals: row.proposals,
-    categories: row.categories ?? [],
-    activityScore: row.activity_score,
-    website: row.website,
-    forum: row.forum,
-    summary: row.summary,
-  };
-}
-
-function mapProposal(row: ProposalRow): Proposal {
-  return {
-    id: row.id,
-    title: row.title,
-    protocol: row.protocol,
-    spaceSlug: row.space_slug,
-    status: row.status,
-    publishedAt: new Date(row.published_at).toISOString(),
-    closesAt: new Date(row.closes_at).toISOString(),
-    heat: row.heat,
-    importance: row.importance,
-    summary: row.summary,
-    aiSummary: row.ai_summary,
-    readableContent: row.readable_content,
-    facts: row.facts ?? [],
-    risks: row.risks ?? [],
-    discussionUrl: row.discussion_url,
-    proposalUrl: row.proposal_url,
-  };
-}
 
 type ProposalQuery = {
   q?: string;
@@ -88,80 +23,222 @@ type SpaceQuery = {
   limit?: number;
 };
 
-export async function listSpaces(query: SpaceQuery = {}): Promise<Space[]> {
-  if (!hasDatabase) {
-    return applySpaceQuery(mockSpaces, query);
-  }
+type SpaceRecord = typeof snapshotSpaces.$inferSelect & {
+  proposalCount: number;
+};
 
-  try {
-    const sql = getSql();
-    const rows = (await sql`
-      select slug, name, tagline, verified, followers, proposals, categories, activity_score, website, forum, summary
-      from spaces
-    `) as SpaceRow[];
-    return applySpaceQuery(rows.map(mapSpace), query);
-  } catch {
-    return applySpaceQuery(mockSpaces, query);
-  }
+type ProposalRecord = {
+  proposal: typeof snapshotProposals.$inferSelect;
+  space: typeof snapshotSpaces.$inferSelect;
+  enrichment: typeof proposalEnrichments.$inferSelect | null;
+};
+
+export async function listSpaces(query: SpaceQuery = {}): Promise<Space[]> {
+  const records = await fetchSpaces();
+  return applySpaceQuery(records.map(mapSpace), query);
 }
 
 export async function getSpaceBySlug(slug: string): Promise<Space | null> {
-  if (!hasDatabase) {
-    return mockSpaces.find((space) => space.slug === slug) ?? null;
-  }
-
-  try {
-    const sql = getSql();
-    const rows = (await sql`
-      select slug, name, tagline, verified, followers, proposals, categories, activity_score, website, forum, summary
-      from spaces
-      where slug = ${slug}
-      limit 1
-    `) as SpaceRow[];
-    return rows[0] ? mapSpace(rows[0]) : null;
-  } catch {
-    return mockSpaces.find((space) => space.slug === slug) ?? null;
-  }
+  const records = await fetchSpaces();
+  const match = records.find((space) => space.id === slug);
+  return match ? mapSpace(match) : null;
 }
 
 export async function listProposals(query: ProposalQuery = {}): Promise<Proposal[]> {
-  if (!hasDatabase) {
-    return applyProposalQuery(mockProposals, query);
-  }
-
-  try {
-    const sql = getSql();
-    const rows = (await sql`
-      select id, title, protocol, space_slug, status, published_at, closes_at, heat, importance, summary, ai_summary, readable_content, facts, risks, discussion_url, proposal_url
-      from proposals
-    `) as ProposalRow[];
-    return applyProposalQuery(rows.map(mapProposal), query);
-  } catch {
-    return applyProposalQuery(mockProposals, query);
-  }
+  const records = await fetchProposals();
+  return applyProposalQuery(records.map(mapProposal), query);
 }
 
 export async function getProposalById(id: string): Promise<Proposal | null> {
-  if (!hasDatabase) {
-    return mockProposals.find((proposal) => proposal.id === id) ?? null;
-  }
-
-  try {
-    const sql = getSql();
-    const rows = (await sql`
-      select id, title, protocol, space_slug, status, published_at, closes_at, heat, importance, summary, ai_summary, readable_content, facts, risks, discussion_url, proposal_url
-      from proposals
-      where id = ${id}
-      limit 1
-    `) as ProposalRow[];
-    return rows[0] ? mapProposal(rows[0]) : null;
-  } catch {
-    return mockProposals.find((proposal) => proposal.id === id) ?? null;
-  }
+  const records = await fetchProposals();
+  const match = records.find((record) => record.proposal.id === id);
+  return match ? mapProposal(match) : null;
 }
 
 export async function listSpaceProposals(spaceSlug: string, query: Omit<ProposalQuery, "spaceSlug"> = {}) {
   return listProposals({ ...query, spaceSlug });
+}
+
+async function fetchSpaces(): Promise<SpaceRecord[]> {
+  if (!hasDatabase) {
+    return [];
+  }
+
+  try {
+    const db = getDb();
+    const [spaces, proposalCounts] = await Promise.all([
+      db.select().from(snapshotSpaces),
+      db
+        .select({
+          spaceId: snapshotProposals.spaceId,
+          proposalCount: count(),
+        })
+        .from(snapshotProposals)
+        .groupBy(snapshotProposals.spaceId),
+    ]);
+
+    const countsBySpaceId = new Map(proposalCounts.map((entry) => [entry.spaceId, entry.proposalCount]));
+
+    return spaces.map((space) => ({
+      ...space,
+      proposalCount: countsBySpaceId.get(space.id) ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchProposals(): Promise<ProposalRecord[]> {
+  if (!hasDatabase) {
+    return [];
+  }
+
+  try {
+    const db = getDb();
+    return await db
+      .select({
+        proposal: snapshotProposals,
+        space: snapshotSpaces,
+        enrichment: proposalEnrichments,
+      })
+      .from(snapshotProposals)
+      .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+      .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id));
+  } catch {
+    return [];
+  }
+}
+
+function mapSpace(space: SpaceRecord): Space {
+  const categories = deriveSpaceCategories(space);
+  const summary = normalizeText(space.about) || `Governance space on ${space.network ?? "Snapshot"}.`;
+
+  return {
+    slug: space.id,
+    name: space.name,
+    tagline: buildTagline(summary, space.network),
+    verified: Array.isArray(space.admins) && space.admins.length > 0,
+    followers: space.memberCount,
+    proposals: space.proposalCount,
+    categories,
+    activityScore: computeActivityScore(space.memberCount, space.proposalCount),
+    website: getSnapshotSpaceUrl(space.id),
+    forum: getSnapshotSpaceUrl(space.id),
+    summary,
+  };
+}
+
+function mapProposal(record: ProposalRecord): Proposal {
+  const { proposal, space, enrichment } = record;
+  const body = normalizeText(proposal.body) || "";
+  const summary = excerpt(body, 180) || proposal.title;
+  const readableContent = enrichment?.readableContent ?? body;
+  const aiSummary = enrichment?.aiSummary ?? summary;
+  const facts = parseStringArray(enrichment?.facts);
+  const riskLabels = parseStringArray(enrichment?.riskLabels);
+  const proposalUrl = getSnapshotProposalUrl(space.id, proposal.id);
+
+  return {
+    id: proposal.id,
+    title: proposal.title,
+    protocol: space.name,
+    spaceSlug: space.id,
+    status: mapProposalStatus(proposal.state),
+    publishedAt: fromUnixSeconds(proposal.createdTs),
+    closesAt: fromUnixSeconds(proposal.endTs),
+    heat: computeProposalHeat(proposal.scoresTotal, space.memberCount),
+    importance: mapImportanceLabel(enrichment?.importanceLabel, proposal.title, body),
+    summary,
+    aiSummary,
+    readableContent,
+    facts,
+    risks: riskLabels,
+    discussionUrl: proposalUrl,
+    proposalUrl,
+  };
+}
+
+function deriveSpaceCategories(space: typeof snapshotSpaces.$inferSelect) {
+  const categories = new Set<string>();
+  categories.add("Snapshot");
+
+  if (space.network) {
+    categories.add(space.network);
+  }
+
+  const strategies = Array.isArray(space.strategies) ? space.strategies : [];
+  for (const strategy of strategies) {
+    if (strategy && typeof strategy === "object" && "name" in strategy && typeof strategy.name === "string") {
+      categories.add(strategy.name);
+    }
+  }
+
+  return Array.from(categories).slice(0, 4);
+}
+
+function buildTagline(summary: string, network: string | null) {
+  const firstSentence = summary.split(".")[0]?.trim();
+  if (firstSentence) {
+    return firstSentence.length > 72 ? `${firstSentence.slice(0, 69)}...` : firstSentence;
+  }
+
+  return `Governance activity on ${network ?? "Snapshot"}.`;
+}
+
+function computeActivityScore(memberCount: number, proposalCount: number) {
+  return Math.max(8, Math.min(99, Math.round(Math.log10(memberCount + 10) * 20 + Math.log10(proposalCount + 1) * 18)));
+}
+
+function computeProposalHeat(scoresTotal: string | null, memberCount: number) {
+  const score = scoresTotal ? Number(scoresTotal) : 0;
+  return Math.max(10, Math.min(99, Math.round(Math.log10(score + 10) * 24 + Math.log10(memberCount + 10) * 12)));
+}
+
+function mapProposalStatus(state: string): ProposalStatus {
+  const normalized = state.toLowerCase();
+  if (normalized === "active") return "Active";
+  if (normalized === "pending") return "Upcoming";
+  if (normalized === "closed") return "Closed";
+  return "Executed";
+}
+
+function mapImportanceLabel(label: string | null | undefined, title: string, body: string): ProposalPriority {
+  if (label === "High Signal" || label === "Treasury Risk" || label === "Routine" || label === "Strategic") {
+    return label;
+  }
+
+  const content = `${title} ${body}`.toLowerCase();
+  if (/(treasury|budget|grant|funding|allocation)/.test(content)) return "Treasury Risk";
+  if (/(deploy|upgrade|migration|framework|launch|strategy)/.test(content)) return "Strategic";
+  if (/(risk|parameter|safety|oracle|liquidation)/.test(content)) return "High Signal";
+  return "Routine";
+}
+
+function parseStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function normalizeText(value: string | null | undefined) {
+  if (!value) return "";
+  return value.replace(/[#>*_`~-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function excerpt(text: string, length: number) {
+  if (!text) return "";
+  return text.length <= length ? text : `${text.slice(0, length - 3).trimEnd()}...`;
+}
+
+function fromUnixSeconds(value: number) {
+  return new Date(value * 1000).toISOString();
+}
+
+function getSnapshotSpaceUrl(spaceId: string) {
+  return `https://snapshot.box/#/${spaceId}`;
+}
+
+function getSnapshotProposalUrl(spaceId: string, proposalId: string) {
+  return `https://snapshot.box/#/${spaceId}/proposal/${proposalId}`;
 }
 
 function applyProposalQuery(items: Proposal[], query: ProposalQuery) {
