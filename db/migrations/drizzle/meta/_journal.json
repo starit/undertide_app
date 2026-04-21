@@ -15,6 +15,20 @@
       "when": 1776753079916,
       "tag": "0001_pale_network",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776762000000,
+      "tag": "0002_space_proposal_count",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776773524396,
+      "tag": "0003_hesitant_black_tarantula",
+      "breakpoints": true
     }
   ]
 }

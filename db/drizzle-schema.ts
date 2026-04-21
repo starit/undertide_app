@@ -22,6 +22,7 @@ export const snapshotSpaces = pgTable(
     symbol: text("symbol"),
     admins: jsonb("admins").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     memberCount: integer("member_count").notNull().default(0),
+    proposalCount: integer("proposal_count").notNull().default(0),
     strategies: jsonb("strategies").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     filters: jsonb("filters").$type<Record<string, unknown> | null>(),
     plugins: jsonb("plugins").$type<Record<string, unknown> | null>(),

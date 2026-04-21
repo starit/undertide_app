@@ -6,6 +6,7 @@ create table if not exists snapshot_spaces (
   symbol text,
   admins jsonb not null default '[]'::jsonb,
   member_count integer not null default 0,
+  proposal_count integer not null default 0,
   strategies jsonb not null default '[]'::jsonb,
   filters jsonb,
   plugins jsonb,

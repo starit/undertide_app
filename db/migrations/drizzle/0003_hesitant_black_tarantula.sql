@@ -1,0 +1,1 @@
+ALTER TABLE "snapshot_spaces" ADD COLUMN "proposal_count" integer DEFAULT 0 NOT NULL;

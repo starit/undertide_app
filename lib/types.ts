@@ -20,6 +20,21 @@ export interface Proposal {
   proposalUrl: string;
 }
 
+export interface ProposalTranslation {
+  proposalId: string;
+  locale: string;
+  title: string;
+  body: string;
+  summary: string;
+  translatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProposalDetail extends Proposal {
+  translation: ProposalTranslation | null;
+}
+
 export interface Space {
   slug: string;
   name: string;
@@ -32,4 +47,21 @@ export interface Space {
   website: string;
   forum: string;
   summary: string;
+}
+
+export interface SnapshotSyncState {
+  entityType: string;
+  lastSuccessAt: string | null;
+  lastCursor: string | null;
+  lastCreatedTs: number | null;
+  lastError: string | null;
+  updatedAt: string;
+  latestRun: {
+    id: number;
+    startedAt: string;
+    finishedAt: string | null;
+    status: string;
+    rowsUpserted: number;
+    error: string | null;
+  } | null;
 }

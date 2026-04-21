@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
-import { eq, sql as drizzleSql } from "drizzle-orm";
+import { count, eq, inArray, sql as drizzleSql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
   snapshotProposals,
@@ -147,6 +147,7 @@ async function syncProposals() {
   let upserted = 0;
   let highestCreatedTs = lastCreatedTs ?? 0;
   let shouldStop = false;
+  const touchedSpaceIds = new Set<string>();
 
   while (!shouldStop) {
     const batch = await fetchGraphQL<{ proposals: SnapshotProposal[] }>(
@@ -197,6 +198,7 @@ async function syncProposals() {
 
       highestCreatedTs = Math.max(highestCreatedTs, Number(proposal.created ?? 0));
       await upsertProposal(proposal);
+      touchedSpaceIds.add(proposal.space.id);
       upserted += 1;
 
       if (!options.full && lastCreatedTs && Number(proposal.created ?? 0) <= lastCreatedTs) {
@@ -209,6 +211,8 @@ async function syncProposals() {
 
     if (proposals.length < PROPOSAL_PAGE_SIZE) break;
   }
+
+  await refreshSpaceProposalCounts(Array.from(touchedSpaceIds));
 
   await upsertSyncState("proposals", {
     last_created_ts: highestCreatedTs || null,
@@ -274,6 +278,7 @@ async function upsertSpace(space: SnapshotSpace) {
       symbol: sanitizedSpace.symbol ?? null,
       admins: sanitizedSpace.admins ?? [],
       memberCount: Array.isArray(sanitizedSpace.members) ? sanitizedSpace.members.length : 0,
+      proposalCount: 0,
       strategies: sanitizedSpace.strategies ?? [],
       filters: sanitizedSpace.filters ?? null,
       plugins: sanitizedSpace.plugins ?? null,
@@ -298,6 +303,31 @@ async function upsertSpace(space: SnapshotSpace) {
         lastSyncedAt: drizzleSql`now()`,
       },
     });
+}
+
+async function refreshSpaceProposalCounts(spaceIds: string[]) {
+  if (spaceIds.length === 0) return;
+
+  const counts = await db
+    .select({
+      spaceId: snapshotProposals.spaceId,
+      proposalCount: count(),
+    })
+    .from(snapshotProposals)
+    .where(inArray(snapshotProposals.spaceId, spaceIds))
+    .groupBy(snapshotProposals.spaceId);
+
+  const countsBySpaceId = new Map(counts.map((entry) => [entry.spaceId, entry.proposalCount]));
+
+  for (const spaceId of spaceIds) {
+    await db
+      .update(snapshotSpaces)
+      .set({
+        proposalCount: countsBySpaceId.get(spaceId) ?? 0,
+        lastSyncedAt: drizzleSql`now()`,
+      })
+      .where(eq(snapshotSpaces.id, spaceId));
+  }
 }
 
 async function replaceSpaceMembers(spaceId: string, members: string[]) {

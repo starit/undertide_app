@@ -1,11 +1,14 @@
-import { count, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   proposalEnrichments,
+  proposalTranslations,
   snapshotProposals,
+  snapshotSyncRuns,
+  snapshotSyncState,
   snapshotSpaces,
 } from "@/db/drizzle-schema";
 import { getDb, hasDatabase } from "@/lib/db";
-import { Proposal, ProposalPriority, ProposalStatus, Space } from "@/lib/types";
+import { Proposal, ProposalPriority, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
 
 type ProposalQuery = {
   q?: string;
@@ -23,9 +26,10 @@ type SpaceQuery = {
   limit?: number;
 };
 
-type SpaceRecord = typeof snapshotSpaces.$inferSelect & {
-  proposalCount: number;
-};
+type SlimSpaceRecord = Pick<
+  typeof snapshotSpaces.$inferSelect,
+  "id" | "name" | "about" | "network" | "admins" | "memberCount" | "proposalCount" | "strategies"
+>;
 
 type ProposalRecord = {
   proposal: typeof snapshotProposals.$inferSelect;
@@ -33,15 +37,20 @@ type ProposalRecord = {
   enrichment: typeof proposalEnrichments.$inferSelect | null;
 };
 
+type ProposalTranslationRecord = typeof proposalTranslations.$inferSelect;
+
+type SnapshotSyncStateRecord = typeof snapshotSyncState.$inferSelect & {
+  latestRun: typeof snapshotSyncRuns.$inferSelect | null;
+};
+
 export async function listSpaces(query: SpaceQuery = {}): Promise<Space[]> {
-  const records = await fetchSpaces();
+  const records = await fetchSpaces(query);
   return applySpaceQuery(records.map(mapSpace), query);
 }
 
 export async function getSpaceBySlug(slug: string): Promise<Space | null> {
-  const records = await fetchSpaces();
-  const match = records.find((space) => space.id === slug);
-  return match ? mapSpace(match) : null;
+  const record = await fetchSpaceBySlug(slug);
+  return record ? mapSpace(record) : null;
 }
 
 export async function listProposals(query: ProposalQuery = {}): Promise<Proposal[]> {
@@ -55,36 +64,107 @@ export async function getProposalById(id: string): Promise<Proposal | null> {
   return match ? mapProposal(match) : null;
 }
 
+export async function getProposalTranslations(proposalId: string, locales?: string[]): Promise<ProposalTranslation[]> {
+  const records = await fetchProposalTranslations(proposalId, locales);
+  return records.map(mapProposalTranslation);
+}
+
+export async function getProposalTranslation(
+  proposalId: string,
+  locale: string
+): Promise<ProposalTranslation | null> {
+  const [record] = await fetchProposalTranslations(proposalId, [locale]);
+  return record ? mapProposalTranslation(record) : null;
+}
+
+export async function getProposalDetail(
+  id: string,
+  locale?: string
+): Promise<(Proposal & { translation: ProposalTranslation | null }) | null> {
+  const proposal = await getProposalById(id);
+  if (!proposal) return null;
+
+  const translation = locale ? await getProposalTranslation(id, locale) : null;
+  if (!translation) {
+    return { ...proposal, translation: null };
+  }
+
+  return {
+    ...proposal,
+    title: translation.title || proposal.title,
+    summary: translation.summary || proposal.summary,
+    readableContent: translation.body || proposal.readableContent,
+    translation,
+  };
+}
+
 export async function listSpaceProposals(spaceSlug: string, query: Omit<ProposalQuery, "spaceSlug"> = {}) {
   return listProposals({ ...query, spaceSlug });
 }
 
-async function fetchSpaces(): Promise<SpaceRecord[]> {
+export async function listSnapshotSyncStates(entityTypes?: string[]): Promise<SnapshotSyncState[]> {
+  const records = await fetchSnapshotSyncStates(entityTypes);
+  return records.map(mapSnapshotSyncState);
+}
+
+async function fetchSpaces(query: SpaceQuery = {}): Promise<SlimSpaceRecord[]> {
   if (!hasDatabase) {
     return [];
   }
 
   try {
     const db = getDb();
-    const [spaces, proposalCounts] = await Promise.all([
-      db.select().from(snapshotSpaces),
-      db
-        .select({
-          spaceId: snapshotProposals.spaceId,
-          proposalCount: count(),
-        })
-        .from(snapshotProposals)
-        .groupBy(snapshotProposals.spaceId),
-    ]);
+    const shouldLimitInSql = Boolean(query.limit) && !query.q && !query.category && typeof query.verified !== "boolean";
+    const baseQuery = db
+      .select({
+        id: snapshotSpaces.id,
+        name: snapshotSpaces.name,
+        about: snapshotSpaces.about,
+        network: snapshotSpaces.network,
+        admins: snapshotSpaces.admins,
+        memberCount: snapshotSpaces.memberCount,
+        proposalCount: snapshotSpaces.proposalCount,
+        strategies: snapshotSpaces.strategies,
+      })
+      .from(snapshotSpaces);
 
-    const countsBySpaceId = new Map(proposalCounts.map((entry) => [entry.spaceId, entry.proposalCount]));
+    if (shouldLimitInSql) {
+      return await baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name).limit(query.limit!);
+    }
 
-    return spaces.map((space) => ({
-      ...space,
-      proposalCount: countsBySpaceId.get(space.id) ?? 0,
-    }));
+    return await baseQuery;
   } catch {
     return [];
+  }
+}
+
+async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
+  if (!hasDatabase) {
+    return null;
+  }
+
+  try {
+    const db = getDb();
+    const space = await db
+      .select({
+        id: snapshotSpaces.id,
+        name: snapshotSpaces.name,
+        about: snapshotSpaces.about,
+        network: snapshotSpaces.network,
+        admins: snapshotSpaces.admins,
+        memberCount: snapshotSpaces.memberCount,
+        proposalCount: snapshotSpaces.proposalCount,
+        strategies: snapshotSpaces.strategies,
+      })
+      .from(snapshotSpaces)
+      .where(eq(snapshotSpaces.id, slug))
+      .limit(1);
+
+    const match = space[0];
+    if (!match) return null;
+    return match;
+  } catch {
+    return null;
   }
 }
 
@@ -109,7 +189,66 @@ async function fetchProposals(): Promise<ProposalRecord[]> {
   }
 }
 
-function mapSpace(space: SpaceRecord): Space {
+async function fetchProposalTranslations(
+  proposalId: string,
+  locales?: string[]
+): Promise<ProposalTranslationRecord[]> {
+  if (!hasDatabase) {
+    return [];
+  }
+
+  try {
+    const db = getDb();
+    const condition =
+      locales && locales.length > 0
+        ? and(eq(proposalTranslations.proposalId, proposalId), inArray(proposalTranslations.locale, locales))
+        : eq(proposalTranslations.proposalId, proposalId);
+
+    return await db
+      .select()
+      .from(proposalTranslations)
+      .where(condition)
+      .orderBy(proposalTranslations.locale);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchSnapshotSyncStates(entityTypes?: string[]): Promise<SnapshotSyncStateRecord[]> {
+  if (!hasDatabase) {
+    return [];
+  }
+
+  try {
+    const db = getDb();
+    const statesQuery = db.select().from(snapshotSyncState);
+    const runsQuery = db.select().from(snapshotSyncRuns);
+
+    const states = await (entityTypes && entityTypes.length > 0
+      ? statesQuery.where(inArray(snapshotSyncState.entityType, entityTypes))
+      : statesQuery);
+
+    const runs = await (entityTypes && entityTypes.length > 0
+      ? runsQuery.where(inArray(snapshotSyncRuns.entityType, entityTypes)).orderBy(desc(snapshotSyncRuns.startedAt))
+      : runsQuery.orderBy(desc(snapshotSyncRuns.startedAt)));
+
+    const latestRuns = new Map<string, typeof snapshotSyncRuns.$inferSelect>();
+    for (const run of runs) {
+      if (!latestRuns.has(run.entityType)) {
+        latestRuns.set(run.entityType, run);
+      }
+    }
+
+    return states.map((state) => ({
+      ...state,
+      latestRun: latestRuns.get(state.entityType) ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function mapSpace(space: SlimSpaceRecord): Space {
   const categories = deriveSpaceCategories(space);
   const summary = normalizeText(space.about) || `Governance space on ${space.network ?? "Snapshot"}.`;
 
@@ -158,7 +297,41 @@ function mapProposal(record: ProposalRecord): Proposal {
   };
 }
 
-function deriveSpaceCategories(space: typeof snapshotSpaces.$inferSelect) {
+function mapProposalTranslation(record: ProposalTranslationRecord): ProposalTranslation {
+  return {
+    proposalId: record.proposalId,
+    locale: record.locale,
+    title: record.title ?? "",
+    body: record.body ?? "",
+    summary: record.summary ?? "",
+    translatedBy: record.translatedBy,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function mapSnapshotSyncState(record: SnapshotSyncStateRecord): SnapshotSyncState {
+  return {
+    entityType: record.entityType,
+    lastSuccessAt: record.lastSuccessAt?.toISOString() ?? null,
+    lastCursor: record.lastCursor,
+    lastCreatedTs: record.lastCreatedTs ?? null,
+    lastError: record.lastError,
+    updatedAt: record.updatedAt.toISOString(),
+    latestRun: record.latestRun
+      ? {
+          id: record.latestRun.id,
+          startedAt: record.latestRun.startedAt.toISOString(),
+          finishedAt: record.latestRun.finishedAt?.toISOString() ?? null,
+          status: record.latestRun.status,
+          rowsUpserted: record.latestRun.rowsUpserted,
+          error: record.latestRun.error,
+        }
+      : null,
+  };
+}
+
+function deriveSpaceCategories(space: Pick<typeof snapshotSpaces.$inferSelect, "network" | "strategies">) {
   const categories = new Set<string>();
   categories.add("Snapshot");
 
