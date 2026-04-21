@@ -128,11 +128,13 @@ async function fetchSpaces(query: SpaceQuery = {}): Promise<SlimSpaceRecord[]> {
       })
       .from(snapshotSpaces);
 
+    const order = baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name);
+
     if (shouldLimitInSql) {
-      return await baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name).limit(query.limit!);
+      return await order.limit(query.limit!);
     }
 
-    return await baseQuery;
+    return await order.limit(2000);
   } catch {
     return [];
   }
@@ -407,11 +409,11 @@ function fromUnixSeconds(value: number) {
 }
 
 function getSnapshotSpaceUrl(spaceId: string) {
-  return `https://snapshot.box/#/${spaceId}`;
+  return `https://snapshot.box/#/${encodeURIComponent(spaceId)}`;
 }
 
 function getSnapshotProposalUrl(spaceId: string, proposalId: string) {
-  return `https://snapshot.box/#/${spaceId}/proposal/${proposalId}`;
+  return `https://snapshot.box/#/${encodeURIComponent(spaceId)}/proposal/${encodeURIComponent(proposalId)}`;
 }
 
 function applyProposalQuery(items: Proposal[], query: ProposalQuery) {

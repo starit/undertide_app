@@ -210,11 +210,12 @@ async function translateProposal(input: {
     throw new Error("DeepSeek returned an empty translation response.");
   }
 
-  const parsed = JSON.parse(content) as {
-    title?: string;
-    body?: string;
-    summary?: string;
-  };
+  let parsed: { title?: string; body?: string; summary?: string };
+  try {
+    parsed = JSON.parse(content) as typeof parsed;
+  } catch {
+    throw new Error(`DeepSeek returned invalid JSON for locale ${input.locale}: ${content.slice(0, 200)}`);
+  }
 
   return {
     title: sanitizeText(parsed.title ?? input.title),

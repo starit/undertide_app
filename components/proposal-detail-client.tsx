@@ -44,8 +44,8 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
       try {
         const localeQuery = requestedLocale && requestedLocale !== "en" ? `?locale=${requestedLocale}` : "";
         const [proposalResponse, translationsResponse] = await Promise.all([
-          fetch(`/api/proposals/${proposalId}${localeQuery}`, { cache: "no-store" }),
-          fetch(`/api/proposals/${proposalId}/translations`, { cache: "no-store" }),
+          fetch(`/api/proposals/${proposalId}${localeQuery}`, {}),
+          fetch(`/api/proposals/${proposalId}/translations`, {}),
         ]);
 
         if (!proposalResponse.ok) {
