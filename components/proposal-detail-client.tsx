@@ -115,6 +115,15 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
               Governance intelligence view with locale-aware proposal content. When a translation exists, the page
               reads from the proposal API with the selected locale.
             </p>
+            {proposal.labels.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {proposal.labels.map((label) => (
+                  <Badge key={label} variant="muted" className="text-xs">
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+            )}
             <div className="mt-6 grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Published</p>
@@ -128,6 +137,22 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Heat</p>
                 <p className="mt-2">{proposal.heat} / 100</p>
               </div>
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Votes</p>
+                <p className="mt-2">{proposal.votesCount.toLocaleString()}</p>
+              </div>
+              {proposal.type && (
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Voting Type</p>
+                  <p className="mt-2 capitalize">{proposal.type.replace(/-/g, " ")}</p>
+                </div>
+              )}
+              {proposal.quorum != null && (
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Quorum</p>
+                  <p className="mt-2">{proposal.quorum.toLocaleString()}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -221,11 +246,13 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                   Original Proposal <ArrowUpRight className="size-4" />
                 </a>
               </Button>
-              <Button variant="outline" asChild>
-                <a href={proposal.discussionUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                  Discussion Thread <ArrowUpRight className="size-4" />
-                </a>
-              </Button>
+              {proposal.discussion && (
+                <Button variant="outline" asChild>
+                  <a href={proposal.discussion} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
+                    Discussion Thread <ArrowUpRight className="size-4" />
+                  </a>
+                </Button>
+              )}
               <Separator />
               <Button variant="ghost" className="justify-start">
                 <Link2 className="size-4" />

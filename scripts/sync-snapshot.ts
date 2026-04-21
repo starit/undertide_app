@@ -96,7 +96,23 @@ async function syncSpaces() {
           ) {
             id
             name
+            proposalsCount
+            followersCount
+            verified
+            categories
+            votesCount
+            twitter
+            github
+            coingecko
+            website
+            discussions
+            flagged
+            flagCode
+            hibernated
+            turbo
+            activeProposals
             about
+            avatar
             network
             symbol
             strategies {
@@ -163,19 +179,35 @@ async function syncProposals() {
             orderDirection: desc
           ) {
             id
+            ipfs
+            type
             title
             body
             choices
+            discussion
+            flagged
+            flagCode
+            symbol
+            labels
+            quorum
+            quorumType
+            privacy
+            link
+            app
             start
             end
             snapshot
             state
             author
             created
+            updated
             scores
             scores_by_strategy
             scores_total
+            scores_state
+            scores_total_value
             scores_updated
+            votes
             plugins
             network
             strategies {
@@ -306,33 +338,62 @@ async function upsertSpace(space: SnapshotSpace) {
         id: sanitizedSpace.id,
         name: sanitizedSpace.name ?? sanitizedSpace.id,
         about: sanitizedSpace.about ?? null,
+        avatar: sanitizedSpace.avatar ?? null,
         network: sanitizedSpace.network ?? null,
         symbol: sanitizedSpace.symbol ?? null,
+        verified: Boolean(sanitizedSpace.verified),
+        categories: sanitizedSpace.categories ?? [],
+        followersCount: Number(sanitizedSpace.followersCount ?? 0),
+        votesCount: Number(sanitizedSpace.votesCount ?? 0),
+        twitter: sanitizedSpace.twitter ?? null,
+        github: sanitizedSpace.github ?? null,
+        coingecko: sanitizedSpace.coingecko ?? null,
+        website: sanitizedSpace.website ?? null,
+        discussions: sanitizedSpace.discussions ?? null,
+        flagged: Boolean(sanitizedSpace.flagged),
+        flagCode: Number(sanitizedSpace.flagCode ?? 0),
+        hibernated: Boolean(sanitizedSpace.hibernated),
+        turbo: Boolean(sanitizedSpace.turbo),
+        activeProposals: Number(sanitizedSpace.activeProposals ?? 0),
         admins: sanitizedSpace.admins ?? [],
         memberCount: Array.isArray(sanitizedSpace.members) ? sanitizedSpace.members.length : 0,
-        proposalCount: 0,
+        proposalCount: Number(sanitizedSpace.proposalsCount ?? 0),
         strategies: sanitizedSpace.strategies ?? [],
         filters: sanitizedSpace.filters ?? null,
         plugins: sanitizedSpace.plugins ?? null,
         raw: sanitizedSpace,
-        lastSeenAt: drizzleSql`now()`,
-        lastSyncedAt: drizzleSql`now()`,
+        updatedAt: drizzleSql`now()`,
       })
       .onConflictDoUpdate({
         target: snapshotSpaces.id,
         set: {
           name: sanitizedSpace.name ?? sanitizedSpace.id,
           about: sanitizedSpace.about ?? null,
+          avatar: sanitizedSpace.avatar ?? null,
           network: sanitizedSpace.network ?? null,
           symbol: sanitizedSpace.symbol ?? null,
+          verified: Boolean(sanitizedSpace.verified),
+          categories: sanitizedSpace.categories ?? [],
+          followersCount: Number(sanitizedSpace.followersCount ?? 0),
+          votesCount: Number(sanitizedSpace.votesCount ?? 0),
+          twitter: sanitizedSpace.twitter ?? null,
+          github: sanitizedSpace.github ?? null,
+          coingecko: sanitizedSpace.coingecko ?? null,
+          website: sanitizedSpace.website ?? null,
+          discussions: sanitizedSpace.discussions ?? null,
+          flagged: Boolean(sanitizedSpace.flagged),
+          flagCode: Number(sanitizedSpace.flagCode ?? 0),
+          hibernated: Boolean(sanitizedSpace.hibernated),
+          turbo: Boolean(sanitizedSpace.turbo),
+          activeProposals: Number(sanitizedSpace.activeProposals ?? 0),
           admins: sanitizedSpace.admins ?? [],
           memberCount: Array.isArray(sanitizedSpace.members) ? sanitizedSpace.members.length : 0,
+          proposalCount: Number(sanitizedSpace.proposalsCount ?? 0),
           strategies: sanitizedSpace.strategies ?? [],
           filters: sanitizedSpace.filters ?? null,
           plugins: sanitizedSpace.plugins ?? null,
           raw: sanitizedSpace,
-          lastSeenAt: drizzleSql`now()`,
-          lastSyncedAt: drizzleSql`now()`,
+          updatedAt: drizzleSql`now()`,
         },
       });
   });
@@ -360,7 +421,7 @@ async function refreshSpaceProposalCounts(spaceIds: string[]) {
         .update(snapshotSpaces)
         .set({
           proposalCount: countsBySpaceId.get(spaceId) ?? 0,
-          lastSyncedAt: drizzleSql`now()`,
+          updatedAt: drizzleSql`now()`,
         })
         .where(eq(snapshotSpaces.id, spaceId));
     });
@@ -386,14 +447,12 @@ async function replaceSpaceMembers(spaceId: string, members: string[]) {
           chunk.map((member) => ({
             spaceId,
             memberAddress: member,
-            firstSeenAt: drizzleSql`now()`,
-            lastSeenAt: drizzleSql`now()`,
           }))
         )
         .onConflictDoUpdate({
           target: [snapshotSpaceMembers.spaceId, snapshotSpaceMembers.memberAddress],
           set: {
-            lastSeenAt: drizzleSql`now()`,
+            updatedAt: drizzleSql`now()`,
           },
         });
     });
@@ -403,57 +462,53 @@ async function replaceSpaceMembers(spaceId: string, members: string[]) {
 async function upsertProposal(proposal: SnapshotProposal) {
   const sanitizedProposal = sanitizeValue(proposal);
   const scoresTotal = normalizeNumericValue(sanitizedProposal.scores_total);
+  const scoresTotalValue = normalizeNumericValue(sanitizedProposal.scores_total_value);
+
+  const proposalValues = {
+    spaceId: sanitizedProposal.space.id,
+    ipfs: sanitizedProposal.ipfs ?? null,
+    type: sanitizedProposal.type ?? null,
+    title: sanitizedProposal.title ?? sanitizedProposal.id,
+    body: sanitizedProposal.body ?? null,
+    choices: sanitizedProposal.choices ?? [],
+    discussion: sanitizedProposal.discussion || null,
+    flagged: sanitizedProposal.flagged ?? false,
+    flagCode: sanitizedProposal.flagCode ?? 0,
+    symbol: sanitizedProposal.symbol ?? null,
+    labels: sanitizedProposal.labels ?? [],
+    quorum: sanitizedProposal.quorum != null ? String(sanitizedProposal.quorum) : null,
+    quorumType: sanitizedProposal.quorumType ?? null,
+    privacy: sanitizedProposal.privacy ?? null,
+    link: sanitizedProposal.link ?? null,
+    app: sanitizedProposal.app ?? null,
+    startTs: Number(sanitizedProposal.start ?? 0),
+    endTs: Number(sanitizedProposal.end ?? 0),
+    createdTs: Number(sanitizedProposal.created ?? 0),
+    updatedTs: sanitizedProposal.updated ? Number(sanitizedProposal.updated) : null,
+    snapshotBlock: sanitizedProposal.snapshot ?? null,
+    state: sanitizedProposal.state ?? "unknown",
+    author: sanitizedProposal.author ?? "",
+    network: sanitizedProposal.network ?? null,
+    scores: sanitizedProposal.scores ?? null,
+    scoresByStrategy: sanitizedProposal.scores_by_strategy ?? null,
+    scoresTotal,
+    scoresState: sanitizedProposal.scores_state ?? null,
+    scoresTotalValue,
+    scoresUpdatedTs: sanitizedProposal.scores_updated ? Number(sanitizedProposal.scores_updated) : null,
+    votesCount: Number(sanitizedProposal.votes ?? 0),
+    strategies: sanitizedProposal.strategies ?? [],
+    plugins: sanitizedProposal.plugins ?? null,
+    raw: sanitizedProposal,
+    syncedAt: drizzleSql`now()`,
+  };
 
   await withDatabaseRetry(`upsertProposal(${sanitizedProposal.id})`, async () => {
     await db
       .insert(snapshotProposals)
-      .values({
-        id: sanitizedProposal.id,
-        spaceId: sanitizedProposal.space.id,
-        title: sanitizedProposal.title ?? sanitizedProposal.id,
-        body: sanitizedProposal.body ?? null,
-        choices: sanitizedProposal.choices ?? [],
-        startTs: Number(sanitizedProposal.start ?? 0),
-        endTs: Number(sanitizedProposal.end ?? 0),
-        createdTs: Number(sanitizedProposal.created ?? 0),
-        snapshotBlock: sanitizedProposal.snapshot ?? null,
-        state: sanitizedProposal.state ?? "unknown",
-        author: sanitizedProposal.author ?? "",
-        network: sanitizedProposal.network ?? null,
-        scores: sanitizedProposal.scores ?? null,
-        scoresByStrategy: sanitizedProposal.scores_by_strategy ?? null,
-        scoresTotal,
-        scoresUpdatedTs: sanitizedProposal.scores_updated ? Number(sanitizedProposal.scores_updated) : null,
-        strategies: sanitizedProposal.strategies ?? [],
-        plugins: sanitizedProposal.plugins ?? null,
-        raw: sanitizedProposal,
-        lastSeenAt: drizzleSql`now()`,
-        lastSyncedAt: drizzleSql`now()`,
-      })
+      .values({ id: sanitizedProposal.id, ...proposalValues })
       .onConflictDoUpdate({
         target: snapshotProposals.id,
-        set: {
-          spaceId: sanitizedProposal.space.id,
-          title: sanitizedProposal.title ?? sanitizedProposal.id,
-          body: sanitizedProposal.body ?? null,
-          choices: sanitizedProposal.choices ?? [],
-          startTs: Number(sanitizedProposal.start ?? 0),
-          endTs: Number(sanitizedProposal.end ?? 0),
-          createdTs: Number(sanitizedProposal.created ?? 0),
-          snapshotBlock: sanitizedProposal.snapshot ?? null,
-          state: sanitizedProposal.state ?? "unknown",
-          author: sanitizedProposal.author ?? "",
-          network: sanitizedProposal.network ?? null,
-          scores: sanitizedProposal.scores ?? null,
-          scoresByStrategy: sanitizedProposal.scores_by_strategy ?? null,
-          scoresTotal,
-          scoresUpdatedTs: sanitizedProposal.scores_updated ? Number(sanitizedProposal.scores_updated) : null,
-          strategies: sanitizedProposal.strategies ?? [],
-          plugins: sanitizedProposal.plugins ?? null,
-          raw: sanitizedProposal,
-          lastSeenAt: drizzleSql`now()`,
-          lastSyncedAt: drizzleSql`now()`,
-        },
+        set: proposalValues,
       });
   });
 }
@@ -465,7 +520,6 @@ async function startSyncRun(entityType: string) {
       .values({
         entityType,
         status: "running",
-        startedAt: drizzleSql`now()`,
         rowsUpserted: 0,
       })
       .returning({ id: snapshotSyncRuns.id })
@@ -482,6 +536,7 @@ async function finishSyncRun(id: number | undefined, status: string, rowsUpserte
       .update(snapshotSyncRuns)
       .set({
         finishedAt: drizzleSql`now()`,
+        updatedAt: drizzleSql`now()`,
         status,
         rowsUpserted,
         error,
@@ -581,7 +636,23 @@ type SnapshotStrategy = {
 type SnapshotSpace = {
   id: string;
   name?: string;
+  proposalsCount?: number | null;
+  followersCount?: number | null;
+  verified?: boolean | null;
+  categories?: string[] | null;
+  votesCount?: number | null;
+  twitter?: string | null;
+  github?: string | null;
+  coingecko?: string | null;
+  website?: string | null;
+  discussions?: string | null;
+  flagged?: boolean | null;
+  flagCode?: number | null;
+  hibernated?: boolean | null;
+  turbo?: boolean | null;
+  activeProposals?: number | null;
   about?: string | null;
+  avatar?: string | null;
   network?: string | null;
   symbol?: string | null;
   strategies?: SnapshotStrategy[];
@@ -593,19 +664,35 @@ type SnapshotSpace = {
 
 type SnapshotProposal = {
   id: string;
+  ipfs?: string | null;
+  type?: string | null;
   title?: string;
   body?: string | null;
   choices?: string[];
+  discussion?: string | null;
+  flagged?: boolean | null;
+  flagCode?: number | null;
+  symbol?: string | null;
+  labels?: string[] | null;
+  quorum?: number | null;
+  quorumType?: string | null;
+  privacy?: string | null;
+  link?: string | null;
+  app?: string | null;
   start?: number;
   end?: number;
   snapshot?: string | null;
   state?: string;
   author?: string;
   created?: number;
+  updated?: number | null;
   scores?: number[] | null;
   scores_by_strategy?: number[][] | null;
   scores_total?: string | number | null;
+  scores_state?: string | null;
+  scores_total_value?: string | number | null;
   scores_updated?: number | null;
+  votes?: number | null;
   plugins?: Record<string, unknown> | null;
   network?: string | null;
   strategies?: SnapshotStrategy[];

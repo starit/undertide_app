@@ -5,6 +5,10 @@ function Avatar({ className, ...props }: React.ComponentProps<typeof AvatarPrimi
   return <AvatarPrimitive.Root className={cn("relative flex size-11 shrink-0 overflow-hidden border border-border", className)} {...props} />;
 }
 
+function AvatarImage({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  return <AvatarPrimitive.Image className={cn("aspect-square size-full object-cover", className)} {...props} />;
+}
+
 function AvatarFallback({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
   return (
     <AvatarPrimitive.Fallback
@@ -14,4 +18,4 @@ function AvatarFallback({ className, ...props }: React.ComponentProps<typeof Ava
   );
 }
 
-export { Avatar, AvatarFallback };
+export { Avatar, AvatarFallback, AvatarImage };

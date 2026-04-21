@@ -46,7 +46,7 @@ async function main() {
       .update(snapshotSpaces)
       .set({
         proposalCount: drizzleSql`case ${cases} else ${snapshotSpaces.proposalCount} end`,
-        lastSyncedAt: drizzleSql`now()`,
+        updatedAt: drizzleSql`now()`,
       })
       .where(inArray(snapshotSpaces.id, chunk.map((entry) => entry.spaceId)));
 

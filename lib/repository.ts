@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
   proposalEnrichments,
   proposalTranslations,
@@ -10,7 +10,7 @@ import {
 import { getDb, hasDatabase } from "@/lib/db";
 import { Proposal, ProposalPriority, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
 
-type ProposalQuery = {
+type ProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
   sort?: "time" | "heat" | "importance";
@@ -18,7 +18,7 @@ type ProposalQuery = {
   limit?: number;
 };
 
-type SpaceQuery = {
+type SpaceFilters = {
   q?: string;
   category?: string;
   verified?: boolean;
@@ -28,7 +28,29 @@ type SpaceQuery = {
 
 type SlimSpaceRecord = Pick<
   typeof snapshotSpaces.$inferSelect,
-  "id" | "name" | "about" | "network" | "admins" | "memberCount" | "proposalCount" | "strategies"
+  | "id"
+  | "name"
+  | "about"
+  | "avatar"
+  | "network"
+  | "verified"
+  | "flagged"
+  | "flagCode"
+  | "hibernated"
+  | "turbo"
+  | "activeProposals"
+  | "website"
+  | "discussions"
+  | "categories"
+  | "followersCount"
+  | "votesCount"
+  | "twitter"
+  | "github"
+  | "coingecko"
+  | "admins"
+  | "memberCount"
+  | "proposalCount"
+  | "strategies"
 >;
 
 type ProposalRecord = {
@@ -43,9 +65,9 @@ type SnapshotSyncStateRecord = typeof snapshotSyncState.$inferSelect & {
   latestRun: typeof snapshotSyncRuns.$inferSelect | null;
 };
 
-export async function listSpaces(query: SpaceQuery = {}): Promise<Space[]> {
+export async function listSpaces(query: SpaceFilters = {}): Promise<Space[]> {
   const records = await fetchSpaces(query);
-  return applySpaceQuery(records.map(mapSpace), query);
+  return applySpaceFilters(records.map(mapSpace), query);
 }
 
 export async function getSpaceBySlug(slug: string): Promise<Space | null> {
@@ -53,15 +75,18 @@ export async function getSpaceBySlug(slug: string): Promise<Space | null> {
   return record ? mapSpace(record) : null;
 }
 
-export async function listProposals(query: ProposalQuery = {}): Promise<Proposal[]> {
-  const records = await fetchProposals();
-  return applyProposalQuery(records.map(mapProposal), query);
+export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
+  const records = await fetchProposals(query);
+  // time sort + limit are fully handled in SQL; skip in-memory pass
+  if ((!query.sort || query.sort === "time") && query.limit) {
+    return records.map(mapProposal);
+  }
+  return applyProposalFilters(records.map(mapProposal), query);
 }
 
 export async function getProposalById(id: string): Promise<Proposal | null> {
-  const records = await fetchProposals();
-  const match = records.find((record) => record.proposal.id === id);
-  return match ? mapProposal(match) : null;
+  const record = await fetchProposalById(id);
+  return record ? mapProposal(record) : null;
 }
 
 export async function getProposalTranslations(proposalId: string, locales?: string[]): Promise<ProposalTranslation[]> {
@@ -98,7 +123,7 @@ export async function getProposalDetail(
   };
 }
 
-export async function listSpaceProposals(spaceSlug: string, query: Omit<ProposalQuery, "spaceSlug"> = {}) {
+export async function listSpaceProposals(spaceSlug: string, query: Omit<ProposalFilters, "spaceSlug"> = {}) {
   return listProposals({ ...query, spaceSlug });
 }
 
@@ -107,34 +132,59 @@ export async function listSnapshotSyncStates(entityTypes?: string[]): Promise<Sn
   return records.map(mapSnapshotSyncState);
 }
 
-async function fetchSpaces(query: SpaceQuery = {}): Promise<SlimSpaceRecord[]> {
-  if (!hasDatabase) {
-    return [];
-  }
+async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]> {
+  if (!hasDatabase) return [];
 
   try {
     const db = getDb();
-    const shouldLimitInSql = Boolean(query.limit) && !query.q && !query.category && typeof query.verified !== "boolean";
+
+    const conditions: (SQL | undefined)[] = [
+      typeof query.verified === "boolean"
+        ? query.verified
+          ? sql`jsonb_array_length(${snapshotSpaces.admins}) > 0`
+          : sql`jsonb_array_length(${snapshotSpaces.admins}) = 0`
+        : undefined,
+      query.q ? ilike(snapshotSpaces.name, `%${query.q.trim()}%`) : undefined,
+    ];
+
     const baseQuery = db
       .select({
         id: snapshotSpaces.id,
         name: snapshotSpaces.name,
         about: snapshotSpaces.about,
+        avatar: snapshotSpaces.avatar,
         network: snapshotSpaces.network,
+        verified: snapshotSpaces.verified,
+        flagged: snapshotSpaces.flagged,
+        flagCode: snapshotSpaces.flagCode,
+        hibernated: snapshotSpaces.hibernated,
+        turbo: snapshotSpaces.turbo,
+        activeProposals: snapshotSpaces.activeProposals,
+        website: snapshotSpaces.website,
+        discussions: snapshotSpaces.discussions,
+        categories: snapshotSpaces.categories,
+        followersCount: snapshotSpaces.followersCount,
+        votesCount: snapshotSpaces.votesCount,
+        twitter: snapshotSpaces.twitter,
+        github: snapshotSpaces.github,
+        coingecko: snapshotSpaces.coingecko,
         admins: snapshotSpaces.admins,
         memberCount: snapshotSpaces.memberCount,
         proposalCount: snapshotSpaces.proposalCount,
         strategies: snapshotSpaces.strategies,
       })
-      .from(snapshotSpaces);
+      .from(snapshotSpaces)
+      .where(and(...conditions));
 
-    const order = baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name);
-
-    if (shouldLimitInSql) {
-      return await order.limit(query.limit!);
+    // followers sort is fully expressible in SQL; push limit when no category post-filter needed
+    if (query.sort === "followers") {
+      const ordered = baseQuery.orderBy(desc(snapshotSpaces.memberCount), snapshotSpaces.name);
+      return await ordered.limit(query.limit && !query.category ? query.limit : 2000);
     }
 
-    return await order.limit(2000);
+    // activity sort needs in-memory computation; pull enough rows for post-filter
+    const ordered = baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name);
+    return await ordered.limit(query.limit && !query.category ? query.limit : 2000);
   } catch {
     return [];
   }
@@ -152,7 +202,22 @@ async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
         id: snapshotSpaces.id,
         name: snapshotSpaces.name,
         about: snapshotSpaces.about,
+        avatar: snapshotSpaces.avatar,
         network: snapshotSpaces.network,
+        verified: snapshotSpaces.verified,
+        flagged: snapshotSpaces.flagged,
+        flagCode: snapshotSpaces.flagCode,
+        hibernated: snapshotSpaces.hibernated,
+        turbo: snapshotSpaces.turbo,
+        activeProposals: snapshotSpaces.activeProposals,
+        website: snapshotSpaces.website,
+        discussions: snapshotSpaces.discussions,
+        categories: snapshotSpaces.categories,
+        followersCount: snapshotSpaces.followersCount,
+        votesCount: snapshotSpaces.votesCount,
+        twitter: snapshotSpaces.twitter,
+        github: snapshotSpaces.github,
+        coingecko: snapshotSpaces.coingecko,
         admins: snapshotSpaces.admins,
         memberCount: snapshotSpaces.memberCount,
         proposalCount: snapshotSpaces.proposalCount,
@@ -170,24 +235,58 @@ async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
   }
 }
 
-async function fetchProposals(): Promise<ProposalRecord[]> {
-  if (!hasDatabase) {
-    return [];
-  }
+async function fetchProposals(query: ProposalFilters = {}): Promise<ProposalRecord[]> {
+  if (!hasDatabase) return [];
 
   try {
     const db = getDb();
-    return await db
-      .select({
-        proposal: snapshotProposals,
-        space: snapshotSpaces,
-        enrichment: proposalEnrichments,
-      })
+
+    const conditions: (SQL | undefined)[] = [
+      query.spaceSlug ? eq(snapshotProposals.spaceId, query.spaceSlug) : undefined,
+      query.status && query.status !== "All"
+        ? query.status === "Executed"
+          ? notInArray(snapshotProposals.state, ["active", "pending", "closed"])
+          : eq(snapshotProposals.state, { Active: "active", Upcoming: "pending", Closed: "closed" }[query.status]!)
+        : undefined,
+      query.q
+        ? or(ilike(snapshotProposals.title, `%${query.q.trim()}%`), ilike(snapshotSpaces.name, `%${query.q.trim()}%`))
+        : undefined,
+    ];
+
+    const baseQuery = db
+      .select({ proposal: snapshotProposals, space: snapshotSpaces, enrichment: proposalEnrichments })
       .from(snapshotProposals)
       .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-      .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id));
+      .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id))
+      .where(and(...conditions))
+      .orderBy(desc(snapshotProposals.createdTs));
+
+    // push LIMIT to SQL only when sort=time (default) — heat/importance need in-memory reorder
+    if ((!query.sort || query.sort === "time") && query.limit) {
+      return await baseQuery.limit(query.limit);
+    }
+
+    return await baseQuery;
   } catch {
     return [];
+  }
+}
+
+async function fetchProposalById(id: string): Promise<ProposalRecord | null> {
+  if (!hasDatabase) return null;
+
+  try {
+    const db = getDb();
+    const [record] = await db
+      .select({ proposal: snapshotProposals, space: snapshotSpaces, enrichment: proposalEnrichments })
+      .from(snapshotProposals)
+      .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+      .leftJoin(proposalEnrichments, eq(proposalEnrichments.proposalId, snapshotProposals.id))
+      .where(eq(snapshotProposals.id, id))
+      .limit(1);
+    return record ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -231,8 +330,8 @@ async function fetchSnapshotSyncStates(entityTypes?: string[]): Promise<Snapshot
       : statesQuery);
 
     const runs = await (entityTypes && entityTypes.length > 0
-      ? runsQuery.where(inArray(snapshotSyncRuns.entityType, entityTypes)).orderBy(desc(snapshotSyncRuns.startedAt))
-      : runsQuery.orderBy(desc(snapshotSyncRuns.startedAt)));
+      ? runsQuery.where(inArray(snapshotSyncRuns.entityType, entityTypes)).orderBy(desc(snapshotSyncRuns.createdAt))
+      : runsQuery.orderBy(desc(snapshotSyncRuns.createdAt)));
 
     const latestRuns = new Map<string, typeof snapshotSyncRuns.$inferSelect>();
     for (const run of runs) {
@@ -254,18 +353,29 @@ function mapSpace(space: SlimSpaceRecord): Space {
   const categories = deriveSpaceCategories(space);
   const summary = normalizeText(space.about) || `Governance space on ${space.network ?? "Snapshot"}.`;
 
+  const snapshotUrl = getSnapshotSpaceUrl(space.id);
+
   return {
     slug: space.id,
     name: space.name,
     tagline: buildTagline(summary, space.network),
-    verified: Array.isArray(space.admins) && space.admins.length > 0,
-    followers: space.memberCount,
+    verified: typeof space.verified === "boolean" ? space.verified : Array.isArray(space.admins) && space.admins.length > 0,
+    flagged: space.flagged,
+    hibernated: space.hibernated,
+    turbo: space.turbo,
+    followers: space.followersCount || space.memberCount,
     proposals: space.proposalCount,
+    activeProposals: space.activeProposals,
+    votes: space.votesCount || 0,
     categories,
-    activityScore: computeActivityScore(space.memberCount, space.proposalCount),
-    website: getSnapshotSpaceUrl(space.id),
-    forum: getSnapshotSpaceUrl(space.id),
+    activityScore: computeActivityScore(space.followersCount || space.memberCount, space.proposalCount),
+    website: space.website || snapshotUrl,
+    forum: space.discussions || snapshotUrl,
+    twitter: space.twitter ?? null,
+    github: space.github ?? null,
+    coingecko: space.coingecko ?? null,
     summary,
+    avatar: resolveIpfsUrl(space.avatar),
   };
 }
 
@@ -288,13 +398,20 @@ function mapProposal(record: ProposalRecord): Proposal {
     publishedAt: fromUnixSeconds(proposal.createdTs),
     closesAt: fromUnixSeconds(proposal.endTs),
     heat: computeProposalHeat(proposal.scoresTotal, space.memberCount),
+    votesCount: proposal.votesCount,
+    type: proposal.type ?? null,
     importance: mapImportanceLabel(enrichment?.importanceLabel, proposal.title, body),
+    labels: parseStringArray(proposal.labels),
+    quorum: proposal.quorum != null ? Number(proposal.quorum) : null,
+    quorumType: proposal.quorumType ?? null,
+    app: proposal.app ?? null,
+    discussion: proposal.discussion || null,
     summary,
     aiSummary,
     readableContent,
     facts,
     risks: riskLabels,
-    discussionUrl: proposalUrl,
+    discussionUrl: proposal.discussion || proposalUrl,
     proposalUrl,
   };
 }
@@ -323,8 +440,9 @@ function mapSnapshotSyncState(record: SnapshotSyncStateRecord): SnapshotSyncStat
     latestRun: record.latestRun
       ? {
           id: record.latestRun.id,
-          startedAt: record.latestRun.startedAt.toISOString(),
+          createdAt: record.latestRun.createdAt.toISOString(),
           finishedAt: record.latestRun.finishedAt?.toISOString() ?? null,
+          updatedAt: record.latestRun.updatedAt?.toISOString() ?? null,
           status: record.latestRun.status,
           rowsUpserted: record.latestRun.rowsUpserted,
           error: record.latestRun.error,
@@ -333,18 +451,23 @@ function mapSnapshotSyncState(record: SnapshotSyncStateRecord): SnapshotSyncStat
   };
 }
 
-function deriveSpaceCategories(space: Pick<typeof snapshotSpaces.$inferSelect, "network" | "strategies">) {
+function deriveSpaceCategories(
+  space: Pick<typeof snapshotSpaces.$inferSelect, "network" | "categories" | "strategies">
+) {
   const categories = new Set<string>();
-  categories.add("Snapshot");
+  const snapshotCategories = Array.isArray(space.categories) ? space.categories : [];
 
-  if (space.network) {
-    categories.add(space.network);
+  for (const category of snapshotCategories) {
+    if (typeof category === "string" && category.trim()) {
+      categories.add(category.trim());
+    }
   }
 
-  const strategies = Array.isArray(space.strategies) ? space.strategies : [];
-  for (const strategy of strategies) {
-    if (strategy && typeof strategy === "object" && "name" in strategy && typeof strategy.name === "string") {
-      categories.add(strategy.name);
+  if (categories.size === 0) {
+    categories.add("Snapshot");
+
+    if (space.network) {
+      categories.add(space.network);
     }
   }
 
@@ -408,6 +531,12 @@ function fromUnixSeconds(value: number) {
   return new Date(value * 1000).toISOString();
 }
 
+function resolveIpfsUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${url.slice(7)}`;
+  return url;
+}
+
 function getSnapshotSpaceUrl(spaceId: string) {
   return `https://snapshot.box/#/${encodeURIComponent(spaceId)}`;
 }
@@ -416,18 +545,9 @@ function getSnapshotProposalUrl(spaceId: string, proposalId: string) {
   return `https://snapshot.box/#/${encodeURIComponent(spaceId)}/proposal/${encodeURIComponent(proposalId)}`;
 }
 
-function applyProposalQuery(items: Proposal[], query: ProposalQuery) {
-  const filtered = items.filter((proposal) => {
-    const q = query.q?.trim().toLowerCase();
-    const matchesQuery = q
-      ? [proposal.title, proposal.protocol, proposal.summary, proposal.aiSummary].join(" ").toLowerCase().includes(q)
-      : true;
-    const matchesStatus = query.status && query.status !== "All" ? proposal.status === query.status : true;
-    const matchesSpace = query.spaceSlug ? proposal.spaceSlug === query.spaceSlug : true;
-    return matchesQuery && matchesStatus && matchesSpace;
-  });
-
-  const sorted = [...filtered].sort((a, b) => {
+function applyProposalFilters(items: Proposal[], query: ProposalFilters) {
+  // spaceSlug, status, q are already filtered in SQL; only complex sorts need in-memory work
+  const sorted = [...items].sort((a, b) => {
     if (query.sort === "heat") return b.heat - a.heat;
     if (query.sort === "importance") return b.importance.localeCompare(a.importance);
     return +new Date(b.publishedAt) - +new Date(a.publishedAt);
@@ -436,15 +556,11 @@ function applyProposalQuery(items: Proposal[], query: ProposalQuery) {
   return typeof query.limit === "number" ? sorted.slice(0, query.limit) : sorted;
 }
 
-function applySpaceQuery(items: Space[], query: SpaceQuery) {
+function applySpaceFilters(items: Space[], query: SpaceFilters) {
+  // verified and q are already filtered in SQL; category is handled here on the smaller result set
   const filtered = items.filter((space) => {
-    const q = query.q?.trim().toLowerCase();
-    const matchesQuery = q
-      ? [space.name, space.summary, space.tagline, ...space.categories].join(" ").toLowerCase().includes(q)
-      : true;
     const matchesCategory = query.category && query.category !== "All" ? space.categories.includes(query.category) : true;
-    const matchesVerified = typeof query.verified === "boolean" ? space.verified === query.verified : true;
-    return matchesQuery && matchesCategory && matchesVerified;
+    return matchesCategory;
   });
 
   const sorted = [...filtered].sort((a, b) => {

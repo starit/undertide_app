@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { getSpaceBySlug, listSpaceProposals } from "@/lib/repository";
 import { ProposalsBrowser } from "@/components/proposals-browser";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +17,18 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <div className="grid gap-8 lg:grid-cols-[1fr_0.8fr]">
         <div className="border border-border bg-card p-8 shadow-panel">
-          <div className="flex items-center gap-3">
-            <h1 className="font-serif text-5xl leading-tight">{space.name}</h1>
-            {space.verified ? <BadgeCheck className="size-5 text-[#1d3a32]" /> : null}
+          <div className="flex items-center gap-4">
+            <Avatar className="size-14">
+              {space.avatar ? <AvatarImage src={space.avatar} alt={space.name} /> : null}
+              <AvatarFallback>{space.name.slice(0, 2)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <h1 className="font-serif text-5xl leading-tight">{space.name}</h1>
+                {space.verified ? <BadgeCheck className="size-5 text-[#1d3a32]" /> : null}
+              </div>
+              <p className="mt-2 font-mono text-xs uppercase tracking-[0.24em] text-muted-foreground">{space.slug}</p>
+            </div>
           </div>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-muted-foreground">{space.summary}</p>
           <div className="mt-6 flex flex-wrap gap-2">

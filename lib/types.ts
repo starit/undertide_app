@@ -10,7 +10,14 @@ export interface Proposal {
   publishedAt: string;
   closesAt: string;
   heat: number;
+  votesCount: number;
+  type: string | null;
   importance: ProposalPriority;
+  labels: string[];
+  quorum: number | null;
+  quorumType: string | null;
+  app: string | null;
+  discussion: string | null;
   summary: string;
   aiSummary: string;
   readableContent: string;
@@ -40,13 +47,22 @@ export interface Space {
   name: string;
   tagline: string;
   verified: boolean;
+  flagged: boolean;
+  hibernated: boolean;
+  turbo: boolean;
   followers: number;
   proposals: number;
+  activeProposals: number;
+  votes: number;
   categories: string[];
   activityScore: number;
   website: string;
   forum: string;
+  twitter: string | null;
+  github: string | null;
+  coingecko: string | null;
   summary: string;
+  avatar: string | null;
 }
 
 export interface SnapshotSyncState {
@@ -58,8 +74,9 @@ export interface SnapshotSyncState {
   updatedAt: string;
   latestRun: {
     id: number;
-    startedAt: string;
+    createdAt: string;
     finishedAt: string | null;
+    updatedAt: string | null;
     status: string;
     rowsUpserted: number;
     error: string | null;

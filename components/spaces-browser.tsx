@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Space } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -18,20 +18,66 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
   const [category, setCategory] = useState<(typeof categoryOptions)[number]>("All");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [sort, setSort] = useState<"Activity" | "Followers">("Activity");
+  const [results, setResults] = useState(spaces);
+  const [isLoading, setIsLoading] = useState(false);
+  const deferredQuery = useDeferredValue(query);
 
-  const filtered = useMemo(() => {
-    return [...spaces]
-      .filter((space) => {
-        const matchesQuery =
-          space.name.toLowerCase().includes(query.toLowerCase()) ||
-          space.summary.toLowerCase().includes(query.toLowerCase()) ||
-          space.categories.join(" ").toLowerCase().includes(query.toLowerCase());
-        const matchesCategory = category === "All" ? true : space.categories.includes(category);
-        const matchesVerified = verifiedOnly ? space.verified : true;
-        return matchesQuery && matchesCategory && matchesVerified;
-      })
-      .sort((a, b) => (sort === "Activity" ? b.activityScore - a.activityScore : b.followers - a.followers));
-  }, [category, query, sort, verifiedOnly]);
+  useEffect(() => {
+    setResults(spaces);
+  }, [spaces]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const searchParams = new URLSearchParams({
+      sort: sort.toLowerCase(),
+      limit: "200",
+    });
+
+    if (deferredQuery.trim()) {
+      searchParams.set("q", deferredQuery.trim());
+    }
+
+    if (category !== "All") {
+      searchParams.set("category", category);
+    }
+
+    if (verifiedOnly) {
+      searchParams.set("verified", "true");
+    }
+
+    async function loadSpaces() {
+      setIsLoading(true);
+
+      try {
+        const response = await fetch(`/api/spaces?${searchParams.toString()}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Spaces request failed: ${response.status}`);
+        }
+
+        const payload = (await response.json()) as { data?: Space[] };
+        if (!controller.signal.aborted) {
+          setResults(Array.isArray(payload.data) ? payload.data : []);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("[SpacesBrowser] failed to load spaces", error);
+          setResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSpaces();
+
+    return () => controller.abort();
+  }, [category, deferredQuery, sort, verifiedOnly]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -89,8 +135,14 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
         ))}
       </div>
 
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          {isLoading ? "Searching spaces from the database..." : `${results.length} spaces loaded from the backend`}
+        </span>
+      </div>
+
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
-        {filtered.map((space) => (
+        {results.map((space) => (
           <SpaceCard key={space.slug} space={space} />
         ))}
       </div>

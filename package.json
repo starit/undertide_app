@@ -11,6 +11,7 @@
     "sync:snapshot": "npx tsx scripts/sync-snapshot.ts",
     "sync:snapshot:full": "npx tsx scripts/sync-snapshot.ts --full",
     "backfill:space-proposal-count": "npx tsx scripts/backfill-space-proposal-count.ts",
+    "backfill:space-avatar": "npx tsx scripts/backfill-space-avatar.ts",
     "translate:proposals": "npx tsx scripts/translate-proposals.ts",
     "example:bench:spaces": "npx tsx examples/benchmark-spaces-api.ts",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",

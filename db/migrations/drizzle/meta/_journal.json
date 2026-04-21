@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1776711101534,
-      "tag": "0000_clumsy_sheva_callister",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1776753079916,
-      "tag": "0001_pale_network",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1776762000000,
-      "tag": "0002_space_proposal_count",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1776773524396,
-      "tag": "0003_hesitant_black_tarantula",
+      "when": 1776795917260,
+      "tag": "0000_short_bromley",
       "breakpoints": true
     }
   ]

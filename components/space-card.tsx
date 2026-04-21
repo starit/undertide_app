@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { Space } from "@/lib/types";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -12,10 +12,12 @@ export function SpaceCard({ space }: { space: Space }) {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             <Avatar>
+              {space.avatar ? <AvatarImage src={space.avatar} alt={space.name} /> : null}
               <AvatarFallback>{space.name.slice(0, 2)}</AvatarFallback>
             </Avatar>
             <div>
               <CardTitle className="text-xl">{space.name}</CardTitle>
+              <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{space.slug}</p>
               <p className="mt-2 text-sm text-muted-foreground">{space.tagline}</p>
             </div>
           </div>
