@@ -65,3 +65,9 @@ Use `db:push` only for rapid local iteration, not as the main production migrati
   - `pnpm sync:snapshot:full`
   - `node --experimental-strip-types scripts/sync-snapshot.ts --spaces-only`
   - `node --experimental-strip-types scripts/sync-snapshot.ts --proposals-only`
+- Proposal translation table:
+  - `proposal_translations`
+  - stores one row per `proposal_id + locale`
+  - currently intended locales: `zh`, `ja`, `ko`
+- Proposal translation entrypoint:
+  - `pnpm translate:proposals`
