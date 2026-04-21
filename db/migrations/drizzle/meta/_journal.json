@@ -8,6 +8,13 @@
       "when": 1776711101534,
       "tag": "0000_clumsy_sheva_callister",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776753079916,
+      "tag": "0001_pale_network",
+      "breakpoints": true
     }
   ]
 }

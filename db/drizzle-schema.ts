@@ -110,6 +110,27 @@ export const proposalEnrichments = pgTable("proposal_enrichments", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const proposalTranslations = pgTable(
+  "proposal_translations",
+  {
+    proposalId: text("proposal_id")
+      .notNull()
+      .references(() => snapshotProposals.id, { onDelete: "cascade" }),
+    locale: text("locale").notNull(),
+    title: text("title"),
+    body: text("body"),
+    summary: text("summary"),
+    translatedBy: text("translated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.proposalId, table.locale] }),
+    localeIdx: index("idx_proposal_translations_locale").on(table.locale),
+    proposalIdIdx: index("idx_proposal_translations_proposal_id").on(table.proposalId),
+  })
+);
+
 export const snapshotSyncState = pgTable("snapshot_sync_state", {
   entityType: text("entity_type").primaryKey(),
   lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
@@ -141,6 +162,7 @@ export const schema = {
   snapshotSpaceMembers,
   snapshotProposals,
   proposalEnrichments,
+  proposalTranslations,
   snapshotSyncState,
   snapshotSyncRuns,
 };
