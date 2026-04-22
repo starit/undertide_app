@@ -5,6 +5,7 @@ export interface Proposal {
   title: string;
   protocol: string;
   spaceSlug: string;
+  spaceAvatar: string | null;
   status: ProposalStatus;
   publishedAt: string;
   closesAt: string;

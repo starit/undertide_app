@@ -76,16 +76,58 @@ a {
   @apply text-muted-foreground;
 }
 
-.proposal-markdown ul {
-  @apply list-disc pl-6;
+.proposal-markdown .proposal-list {
+  @apply my-4 pl-6;
 }
 
-.proposal-markdown ol {
-  @apply list-decimal pl-6;
+.proposal-markdown .proposal-list-unordered {
+  @apply list-disc;
 }
 
-.proposal-markdown li + li {
+.proposal-markdown .proposal-list-ordered {
+  @apply list-decimal;
+}
+
+.proposal-markdown .proposal-list .proposal-list {
+  @apply my-2 pl-5;
+}
+
+.proposal-markdown .proposal-list-item {
+  @apply pl-1;
+}
+
+.proposal-markdown .proposal-list-item + .proposal-list-item {
+  @apply mt-2.5;
+}
+
+.proposal-markdown .proposal-list-item::marker {
+  @apply text-foreground/70;
+}
+
+.proposal-markdown .proposal-list-item > p {
+  @apply my-0;
+}
+
+.proposal-markdown .proposal-list-item > p + .proposal-list,
+.proposal-markdown .proposal-list-item > p + .proposal-list-item,
+.proposal-markdown .proposal-list-item > .proposal-list {
   @apply mt-2;
+}
+
+.proposal-markdown .contains-task-list {
+  @apply list-none pl-0;
+}
+
+.proposal-markdown .task-list-item {
+  @apply flex items-start gap-3 pl-0;
+}
+
+.proposal-markdown .task-list-item::marker {
+  content: "";
+}
+
+.proposal-markdown .proposal-task-checkbox {
+  @apply mt-1 size-4 shrink-0 rounded border-border accent-[hsl(var(--primary))];
 }
 
 .proposal-markdown blockquote {

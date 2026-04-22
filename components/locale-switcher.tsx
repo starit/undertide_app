@@ -34,7 +34,7 @@ export function LocaleSwitcher() {
         <SelectTrigger aria-label={t("language")} className="w-[132px] min-w-0">
           <SelectValue placeholder={localeLabels[locale]} />
         </SelectTrigger>
-        <SelectContent align="end">
+        <SelectContent align="end" className="bg-card/95 backdrop-blur-none">
           <SelectGroup>
             <SelectLabel>{t("language")}</SelectLabel>
             {locales.map((locale) => (

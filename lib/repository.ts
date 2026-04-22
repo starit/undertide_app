@@ -519,6 +519,7 @@ function mapProposal(record: ProposalRecord): Proposal {
     title: proposal.title,
     protocol: space.name,
     spaceSlug: space.id,
+    spaceAvatar: resolveIpfsUrl(space.avatar),
     status: mapProposalStatus(proposal.state),
     publishedAt: fromUnixSeconds(proposal.createdTs),
     closesAt: fromUnixSeconds(proposal.endTs),

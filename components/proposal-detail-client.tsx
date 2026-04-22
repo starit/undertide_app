@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { ArrowUpRight, Languages, Link2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -112,10 +113,15 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
         <div className="flex flex-col gap-8">
           <div className="border border-border bg-card p-5 shadow-panel md:p-8">
             <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/spaces/${proposal.spaceSlug}`} className="inline-flex">
-                <Badge variant="muted" className="transition-colors hover:border-foreground/20 hover:bg-accent">
-                  {proposal.protocol}
-                </Badge>
+              <Link
+                href={`/spaces/${proposal.spaceSlug}`}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/60 px-2.5 py-1.5 transition-colors hover:border-foreground/20 hover:bg-accent/10"
+              >
+                <Avatar className="size-5">
+                  {proposal.spaceAvatar ? <AvatarImage src={proposal.spaceAvatar} alt={proposal.protocol} /> : null}
+                  <AvatarFallback className="text-[10px]">{proposal.protocol.slice(0, 2)}</AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium text-foreground">{proposal.protocol}</span>
               </Link>
               <Badge>{proposal.status}</Badge>
               <Badge variant="muted" className="gap-1">
@@ -212,6 +218,31 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                   remarkPlugins={[remarkGfm]}
                   components={{
                     a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+                    ul: ({ node: _node, className, ...props }) => (
+                      <ul
+                        {...props}
+                        className={["proposal-list proposal-list-unordered", className].filter(Boolean).join(" ")}
+                      />
+                    ),
+                    ol: ({ node: _node, className, ...props }) => (
+                      <ol
+                        {...props}
+                        className={["proposal-list proposal-list-ordered", className].filter(Boolean).join(" ")}
+                      />
+                    ),
+                    li: ({ node: _node, className, ...props }) => (
+                      <li
+                        {...props}
+                        className={["proposal-list-item", className].filter(Boolean).join(" ")}
+                      />
+                    ),
+                    input: ({ node: _node, className, ...props }) => (
+                      <input
+                        {...props}
+                        disabled
+                        className={["proposal-task-checkbox", className].filter(Boolean).join(" ")}
+                      />
+                    ),
                   }}
                 >
                   {bodyContent}

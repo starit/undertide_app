@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { Compass, Languages, Search, ShieldCheck } from "lucide-react";
+import { Bot, Compass, Languages, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlatformStats } from "@/lib/types";
 
@@ -28,9 +28,9 @@ export async function Hero({ stats }: HeroProps) {
       icon: Languages,
     },
     {
-      title: tHome("riskAwareScanning"),
-      description: tHome("riskAwareScanningDescription"),
-      icon: ShieldCheck,
+      title: tHome("aiAgentFriendly"),
+      description: tHome("aiAgentFriendlyDescription"),
+      icon: Bot,
     },
   ];
 

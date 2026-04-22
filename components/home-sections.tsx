@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { ArrowRight, ChevronRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Proposal, Space } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,22 +18,21 @@ export async function QuickEntrySection() {
   ];
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
-      <SectionHeading
-        eyebrow={tHome("quickEntryEyebrow")}
-        title={tHome("quickEntryTitle")}
-        description={tHome("quickEntryDescription")}
-      />
-      <div className="mt-6 grid gap-4 md:grid-cols-3">
+    <section className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-7">
+      <div className="flex flex-col gap-1">
+        <span className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground md:text-xs md:tracking-[0.28em]">
+          {tHome("quickEntryEyebrow")}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
         {entries.map((entry) => (
           <Card key={entry.title}>
-            <CardHeader className="p-4 md:p-5">
-              <CardTitle className="text-xl">{entry.title}</CardTitle>
+            <CardHeader className="p-3 pb-2 md:p-4 md:pb-2">
+              <CardTitle className="text-base md:text-lg">{entry.title}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4 p-4 pt-0 md:p-5 md:pt-0">
-              <p className="text-sm leading-6 text-muted-foreground">{entry.description}</p>
-              <Link href={entry.href} className="inline-flex items-center gap-2 text-sm font-medium">
-                {tHome("open")} {entry.title} <ChevronRight className="size-4" />
+            <CardContent className="p-3 pt-0 md:p-4 md:pt-0">
+              <Link href={entry.href} className="text-sm leading-5 text-muted-foreground transition-colors hover:text-foreground">
+                {entry.description}
               </Link>
             </CardContent>
           </Card>
