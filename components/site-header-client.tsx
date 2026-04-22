@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Waves } from "lucide-react";
+import { Menu, Waves, X } from "lucide-react";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -19,10 +21,15 @@ export function SiteHeaderClient({
   governanceLabel: string;
 }) {
   const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   return (
     <header className="border-b border-border bg-background/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-3 md:px-8 md:py-4">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:gap-4 md:px-8 md:py-4">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center border border-border bg-[#1d3a32] text-[#f4efe6] md:size-11">
@@ -59,9 +66,20 @@ export function SiteHeaderClient({
             </nav>
             <LocaleSwitcher />
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="size-9 p-0 md:hidden"
+            aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? <X className="size-4" /> : <Menu className="size-4" />}
+          </Button>
         </div>
-        <div className="flex flex-col gap-3 md:hidden">
-          <nav className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {mobileMenuOpen && (
+          <div className="grid gap-3 border border-border bg-card p-3 md:hidden">
+            <nav className="grid gap-2">
             {navItems.map((item) => {
               const isActive = isNavItemActive(pathname, item.href);
 
@@ -71,19 +89,20 @@ export function SiteHeaderClient({
                   href={item.href}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "shrink-0 whitespace-nowrap border px-3 py-2 text-sm transition-colors",
+                    "border px-3 py-2 text-sm transition-colors",
                     isActive
                       ? "border-border bg-card text-foreground"
-                      : "border-border text-muted-foreground hover:text-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   )}
                 >
                   {item.label}
                 </Link>
               );
             })}
-          </nav>
-          <LocaleSwitcher />
-        </div>
+            </nav>
+            <LocaleSwitcher />
+          </div>
+        )}
       </div>
     </header>
   );

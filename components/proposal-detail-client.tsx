@@ -109,7 +109,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
-      <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr]">
         <div className="flex flex-col gap-8">
           <div className="border border-border bg-card p-5 shadow-panel md:p-8">
             <div className="flex flex-wrap items-center gap-2">

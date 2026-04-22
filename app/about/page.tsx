@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { X } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { SectionHeading } from "@/components/section-heading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "About UnderTide",
-  description: "Learn how UnderTide aggregates Web3 governance data, builds readable context, and supports DAO decision-making.",
+  description:
+    "UnderTide is built for AI, agents, and their users, delivering richer Web3 governance context for deeper analysis, better participation, and greater transparency.",
   alternates: {
     canonical: "/about",
   },
@@ -64,7 +66,19 @@ export default async function AboutPage() {
         <div className="grid gap-4 text-sm">
           <div className="border border-border p-4">
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tAbout("communityChannels")}</p>
-            <p className="mt-2">{tAbout("communityChannelsValue")}</p>
+            <p className="mt-2">
+              <a
+                href="https://x.com/UnderTide_xyz"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 underline underline-offset-4 hover:text-foreground"
+              >
+                <span className="inline-flex size-4 items-center justify-center rounded-full border border-border">
+                  <X className="size-2.5" />
+                </span>
+                @UnderTide_xyz
+              </a>
+            </p>
           </div>
           <div className="border border-border p-4">
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tAbout("donate")}</p>
@@ -72,7 +86,11 @@ export default async function AboutPage() {
           </div>
           <div className="border border-border p-4">
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tAbout("contact")}</p>
-            <p className="mt-2">hello@undertide.xyz</p>
+            <p className="mt-2">
+              <a href="mailto:hello@undertide.xyz" className="underline underline-offset-4 hover:text-foreground">
+                hello@undertide.xyz
+              </a>
+            </p>
           </div>
         </div>
       </div>

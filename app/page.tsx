@@ -9,14 +9,16 @@ import {
 } from "@/components/home-sections";
 
 export const metadata: Metadata = {
-  title: "Web3 Governance Intelligence",
-  description: "Monitor DAO proposals, governance spaces, and AI-assisted decision context from a single Web3 governance dashboard.",
+  title: "UnderTide | AI-Native Web3 Governance Context",
+  description:
+    "Built for AI, agents, and their users. UnderTide aggregates Web3 governance context to enable deeper analysis, stronger participation, and greater transparency.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "UnderTide | Web3 Governance Intelligence",
-    description: "Monitor DAO proposals, governance spaces, and AI-assisted decision context from a single Web3 governance dashboard.",
+    title: "UnderTide | AI-Native Web3 Governance Context",
+    description:
+      "Built for AI, agents, and their users. UnderTide aggregates Web3 governance context to enable deeper analysis, stronger participation, and greater transparency.",
     url: "https://undertide.xyz",
   },
 };

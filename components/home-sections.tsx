@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronRight } from "lucide-react";
 import { Proposal, Space } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,17 +23,21 @@ export async function QuickEntrySection() {
         <span className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground md:text-xs md:tracking-[0.28em]">
           {tHome("quickEntryEyebrow")}
         </span>
+        <p className="text-xs leading-5 text-muted-foreground">{tHome("quickEntryDescription")}</p>
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         {entries.map((entry) => (
           <Card key={entry.title}>
             <CardHeader className="p-3 pb-2 md:p-4 md:pb-2">
-              <CardTitle className="text-base md:text-lg">{entry.title}</CardTitle>
+              <CardTitle className="text-base md:text-lg">
+                <Link href={entry.href} className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground/80">
+                  {entry.title}
+                  <ChevronRight className="size-4" />
+                </Link>
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-3 pt-0 md:p-4 md:pt-0">
-              <Link href={entry.href} className="text-sm leading-5 text-muted-foreground transition-colors hover:text-foreground">
-                {entry.description}
-              </Link>
+              <p className="text-sm leading-5 text-muted-foreground">{entry.description}</p>
             </CardContent>
           </Card>
         ))}
