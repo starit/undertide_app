@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
   proposalTranslations,
@@ -64,13 +65,11 @@ type SnapshotSyncStateRecord = typeof snapshotSyncState.$inferSelect & {
 };
 
 export async function listSpaces(query: SpaceFilters = {}): Promise<Space[]> {
-  const records = await fetchSpaces(query);
-  return applySpaceFilters(records.map(mapSpace), query);
+  return getCachedSpaces(normalizeSpaceFilters(query));
 }
 
 export async function getSpaceBySlug(slug: string): Promise<Space | null> {
-  const record = await fetchSpaceBySlug(slug);
-  return record ? mapSpace(record) : null;
+  return getCachedSpaceBySlug(slug);
 }
 
 export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
@@ -130,6 +129,33 @@ export async function listSnapshotSyncStates(entityTypes?: string[]): Promise<Sn
   return records.map(mapSnapshotSyncState);
 }
 
+const SPACE_LIST_REVALIDATE_SECONDS = 120;
+const SPACE_DETAIL_REVALIDATE_SECONDS = 300;
+
+const getCachedSpaces = unstable_cache(
+  async (query: NormalizedSpaceFilters) => {
+    const records = await fetchSpaces(query);
+    return applySpaceFilters(records.map(mapSpace), query);
+  },
+  ["spaces-list"],
+  {
+    revalidate: SPACE_LIST_REVALIDATE_SECONDS,
+    tags: ["spaces"],
+  }
+);
+
+const getCachedSpaceBySlug = unstable_cache(
+  async (slug: string) => {
+    const record = await fetchSpaceBySlug(slug);
+    return record ? mapSpace(record) : null;
+  },
+  ["space-detail"],
+  {
+    revalidate: SPACE_DETAIL_REVALIDATE_SECONDS,
+    tags: ["spaces"],
+  }
+);
+
 async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]> {
   if (!hasDatabase) return [];
 
@@ -184,6 +210,24 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
   } catch {
     return [];
   }
+}
+
+type NormalizedSpaceFilters = {
+  q?: string;
+  category?: string;
+  verified?: boolean;
+  sort: "activity" | "followers";
+  limit: number;
+};
+
+function normalizeSpaceFilters(query: SpaceFilters = {}): NormalizedSpaceFilters {
+  return {
+    q: normalizeOptionalString(query.q),
+    category: normalizeOptionalString(query.category),
+    verified: typeof query.verified === "boolean" ? query.verified : undefined,
+    sort: query.sort === "followers" ? "followers" : "activity",
+    limit: normalizeLimit(query.limit, 200),
+  };
 }
 
 async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
@@ -494,6 +538,16 @@ function parseStringArray(value: unknown) {
 function normalizeText(value: string | null | undefined) {
   if (!value) return "";
   return value.replace(/[#>*_`~-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeOptionalString(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function normalizeLimit(value: number | undefined, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(2000, Math.floor(value)));
 }
 
 function excerpt(text: string, length: number) {

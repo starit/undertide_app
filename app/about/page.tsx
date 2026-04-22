@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { SectionHeading } from "@/components/section-heading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDictionary } from "@/lib/i18n";
-import { getServerLocale } from "@/lib/i18n-server";
 
 export const metadata: Metadata = {
   title: "About UnderTide",
@@ -13,44 +12,43 @@ export const metadata: Metadata = {
 };
 
 export default async function AboutPage() {
-  const locale = await getServerLocale();
-  const copy = getDictionary(locale);
+  const tAbout = await getTranslations("about");
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <SectionHeading
-        eyebrow={copy.about.eyebrow}
-        title={copy.about.title}
-        description={copy.about.description}
+        eyebrow={tAbout("eyebrow")}
+        title={tAbout("title")}
+        description={tAbout("description")}
       />
       <div className="mt-10 grid gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>{copy.about.mission}</CardTitle>
+            <CardTitle>{tAbout("mission")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-7 text-muted-foreground">
-              {copy.about.missionDescription}
+              {tAbout("missionDescription")}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>{copy.about.methodology}</CardTitle>
+            <CardTitle>{tAbout("methodology")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-7 text-muted-foreground">
-              {copy.about.methodologyDescription}
+              {tAbout("methodologyDescription")}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>{copy.about.community}</CardTitle>
+            <CardTitle>{tAbout("community")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-7 text-muted-foreground">
-              {copy.about.communityDescription}
+              {tAbout("communityDescription")}
             </p>
           </CardContent>
         </Card>
@@ -58,22 +56,22 @@ export default async function AboutPage() {
 
       <div className="mt-8 grid gap-6 border border-border bg-card p-8 md:grid-cols-2">
         <div>
-          <h2 className="font-serif text-3xl">{copy.about.supportContact}</h2>
+          <h2 className="font-serif text-3xl">{tAbout("supportContact")}</h2>
           <p className="mt-4 text-sm leading-7 text-muted-foreground">
-            {copy.about.supportContactDescription}
+            {tAbout("supportContactDescription")}
           </p>
         </div>
         <div className="grid gap-4 text-sm">
           <div className="border border-border p-4">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.about.communityChannels}</p>
-            <p className="mt-2">{copy.about.communityChannelsValue}</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tAbout("communityChannels")}</p>
+            <p className="mt-2">{tAbout("communityChannelsValue")}</p>
           </div>
           <div className="border border-border p-4">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.about.donate}</p>
-            <p className="mt-2">{copy.about.donateValue}</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tAbout("donate")}</p>
+            <p className="mt-2">{tAbout("donateValue")}</p>
           </div>
           <div className="border border-border p-4">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.about.contact}</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tAbout("contact")}</p>
             <p className="mt-2">hello@undertide.xyz</p>
           </div>
         </div>

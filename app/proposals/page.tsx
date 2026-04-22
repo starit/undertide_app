@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { listProposals } from "@/lib/repository";
 import { ProposalsBrowser } from "@/components/proposals-browser";
 import { SectionHeading } from "@/components/section-heading";
-import { getDictionary } from "@/lib/i18n";
-import { getServerLocale } from "@/lib/i18n-server";
+
+const INITIAL_PROPOSAL_LIMIT = 24;
 
 export const metadata: Metadata = {
   title: "Governance Proposals",
@@ -14,19 +15,18 @@ export const metadata: Metadata = {
 };
 
 export default async function ProposalsPage() {
-  const locale = await getServerLocale();
-  const copy = getDictionary(locale);
-  const proposals = await listProposals({ sort: "time" });
+  const tProposals = await getTranslations("proposals");
+  const proposals = await listProposals({ sort: "time", limit: INITIAL_PROPOSAL_LIMIT });
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <SectionHeading
-        eyebrow={copy.proposals.eyebrow}
-        title={copy.proposals.title}
-        description={copy.proposals.description}
+        eyebrow={tProposals("eyebrow")}
+        title={tProposals("title")}
+        description={tProposals("description")}
       />
       <div className="mt-10">
-        <ProposalsBrowser proposals={proposals} locale={locale} />
+        <ProposalsBrowser proposals={proposals} />
       </div>
     </section>
   );

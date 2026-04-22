@@ -1,30 +1,30 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Compass, Languages, Search, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Locale, getDictionary } from "@/lib/i18n";
 
-export function Hero({ locale }: { locale: Locale }) {
-  const copy = getDictionary(locale);
+export async function Hero() {
+  const tHome = await getTranslations("home");
   const stats = [
-    { label: copy.home.trackedSpaces, value: "120+" },
-    { label: copy.home.proposalSignals, value: "4.8k" },
-    { label: copy.home.readableBriefs, value: copy.home.multiLang },
+    { label: tHome("trackedSpaces"), value: "120+" },
+    { label: tHome("proposalSignals"), value: "4.8k" },
+    { label: tHome("readableBriefs"), value: tHome("multiLang") },
   ];
 
   const points = [
     {
-      title: copy.home.crossProtocolMonitoring,
-      description: copy.home.crossProtocolMonitoringDescription,
+      title: tHome("crossProtocolMonitoring"),
+      description: tHome("crossProtocolMonitoringDescription"),
       icon: Compass,
     },
     {
-      title: copy.home.readableProposalIntelligence,
-      description: copy.home.readableProposalIntelligenceDescription,
+      title: tHome("readableProposalIntelligence"),
+      description: tHome("readableProposalIntelligenceDescription"),
       icon: Languages,
     },
     {
-      title: copy.home.riskAwareScanning,
-      description: copy.home.riskAwareScanningDescription,
+      title: tHome("riskAwareScanning"),
+      description: tHome("riskAwareScanningDescription"),
       icon: ShieldCheck,
     },
   ];
@@ -36,24 +36,24 @@ export function Hero({ locale }: { locale: Locale }) {
           <div className="absolute inset-0 bg-grid bg-[size:28px_28px] opacity-30" />
           <div className="relative flex flex-col gap-6">
             <div className="flex flex-col gap-3">
-              <span className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">{copy.home.heroEyebrow}</span>
+              <span className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">{tHome("heroEyebrow")}</span>
               <h1 className="max-w-4xl font-serif text-4xl leading-[1.02] md:text-6xl">
-                {copy.home.heroTitle}
+                {tHome("heroTitle")}
               </h1>
               <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                {copy.home.heroDescription}
+                {tHome("heroDescription")}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
-                <Link href="/proposals">{copy.home.browseProposals}</Link>
+                <Link href="/proposals">{tHome("browseProposals")}</Link>
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/spaces">{copy.home.exploreSpaces}</Link>
+                <Link href="/spaces">{tHome("exploreSpaces")}</Link>
               </Button>
               <Button variant="ghost" asChild>
                 <Link href="/search" className="inline-flex items-center gap-2">
-                  {copy.home.searchEverything} <Search className="size-4" />
+                  {tHome("searchEverything")} <Search className="size-4" />
                 </Link>
               </Button>
             </div>

@@ -3,6 +3,8 @@ import { listSpaces } from "@/lib/repository";
 
 export const runtime = "nodejs";
 const DEFAULT_SPACE_LIMIT = 200;
+const SPACE_API_S_MAXAGE_SECONDS = 120;
+const SPACE_API_STALE_WHILE_REVALIDATE_SECONDS = 300;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -14,5 +16,12 @@ export async function GET(request: NextRequest) {
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_SPACE_LIMIT,
   });
 
-  return NextResponse.json({ data: spaces });
+  return NextResponse.json(
+    { data: spaces },
+    {
+      headers: {
+        "Cache-Control": `public, s-maxage=${SPACE_API_S_MAXAGE_SECONDS}, stale-while-revalidate=${SPACE_API_STALE_WHILE_REVALIDATE_SECONDS}`,
+      },
+    }
+  );
 }

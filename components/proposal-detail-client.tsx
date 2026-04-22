@@ -2,13 +2,16 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { ArrowUpRight, Languages, Link2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ProposalDetail, ProposalTranslation } from "@/lib/types";
-import { formatMessage, Locale, getDictionary } from "@/lib/i18n";
+import { formatMessage } from "@/lib/i18n";
 
 const localeOptions = [
   { value: "en", label: "English" },
@@ -21,14 +24,14 @@ type Props = {
   proposalId: string;
   initialProposal: ProposalDetail;
   initialLocale: string;
-  uiLocale: Locale;
 };
 
-export function ProposalDetailClient({ proposalId, initialProposal, initialLocale, uiLocale }: Props) {
+export function ProposalDetailClient({ proposalId, initialProposal, initialLocale }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const copy = getDictionary(uiLocale);
+  const uiLocale = useLocale();
+  const tProposals = useTranslations("proposals");
   const [isPending, startTransition] = useTransition();
   const [proposal, setProposal] = useState(initialProposal);
   const [availableLocales, setAvailableLocales] = useState<string[]>(
@@ -125,30 +128,30 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
             )}
             <div className="mt-6 grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{copy.proposals.published}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("published")}</p>
                 <p className="mt-2">{new Date(proposal.publishedAt).toLocaleString(uiLocale)}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{copy.proposals.closes}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("closes")}</p>
                 <p className="mt-2">{new Date(proposal.closesAt).toLocaleString(uiLocale)}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{copy.proposals.heat}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("heat")}</p>
                 <p className="mt-2">{proposal.heat} / 100</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{copy.proposals.votes}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("votes")}</p>
                 <p className="mt-2">{proposal.votesCount.toLocaleString()}</p>
               </div>
               {proposal.type && (
                 <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{copy.proposals.votingType}</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("votingType")}</p>
                   <p className="mt-2 capitalize">{proposal.type.replace(/-/g, " ")}</p>
                 </div>
               )}
               {proposal.quorum != null && (
                 <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{copy.proposals.quorum}</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("quorum")}</p>
                   <p className="mt-2">{proposal.quorum.toLocaleString()}</p>
                 </div>
               )}
@@ -158,7 +161,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
           <Card>
             <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle>{copy.proposals.readingLocale}</CardTitle>
+                <CardTitle>{tProposals("readingLocale")}</CardTitle>
               </div>
               <div className="flex flex-wrap gap-2">
                 {localeOptions.map((option) => {
@@ -181,23 +184,32 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
             <CardContent>
               <p className="text-sm leading-7 text-muted-foreground">
                 {isLoading
-                  ? copy.proposals.refreshingProposalContent
+                  ? tProposals("refreshingProposalContent")
                   : proposal.translation
-                    ? formatMessage(copy.proposals.translatedBy, {
+                    ? formatMessage(tProposals("translatedBy"), {
                         locale: proposal.translation.locale.toUpperCase(),
                         by: proposal.translation.translatedBy ?? "the translation pipeline",
                       })
-                    : copy.proposals.defaultSourceContent}
+                    : tProposals("defaultSourceContent")}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>{copy.proposals.proposalContent}</CardTitle>
+              <CardTitle>{tProposals("proposalContent")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="leading-8 text-muted-foreground">{bodyContent}</p>
+              <div className="proposal-markdown text-muted-foreground">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+                  }}
+                >
+                  {bodyContent}
+                </ReactMarkdown>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -205,25 +217,25 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>{copy.proposals.sourceLinks}</CardTitle>
+              <CardTitle>{tProposals("sourceLinks")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <Button variant="outline" asChild>
                 <a href={proposal.proposalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                  {copy.proposals.originalProposal} <ArrowUpRight className="size-4" />
+                  {tProposals("originalProposal")} <ArrowUpRight className="size-4" />
                 </a>
               </Button>
               {proposal.discussion && (
                 <Button variant="outline" asChild>
                   <a href={proposal.discussion} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                    {copy.proposals.discussionThread} <ArrowUpRight className="size-4" />
+                    {tProposals("discussionThread")} <ArrowUpRight className="size-4" />
                   </a>
                 </Button>
               )}
               <Separator />
               <Button variant="ghost" className="justify-start">
                 <Link2 className="size-4" />
-                {copy.proposals.shareSummary}
+                {tProposals("shareSummary")}
               </Button>
             </CardContent>
           </Card>

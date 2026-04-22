@@ -15,6 +15,13 @@
       "when": 1776797261978,
       "tag": "0001_dazzling_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776859200000,
+      "tag": "0002_remove_foreign_keys",
+      "breakpoints": true
     }
   ]
 }

@@ -1,17 +1,17 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Waves } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Locale, getDictionary } from "@/lib/i18n";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 
-export function SiteHeader({ locale }: { locale: Locale }) {
-  const copy = getDictionary(locale);
+export async function SiteHeader() {
+  const tNav = await getTranslations("nav");
   const navItems = [
-    { href: "/", label: copy.nav.home },
-    { href: "/spaces", label: copy.nav.spaces },
-    { href: "/proposals", label: copy.nav.proposals },
-    { href: "/search", label: copy.nav.search },
-    { href: "/about", label: copy.nav.about },
+    { href: "/", label: tNav("home") },
+    { href: "/spaces", label: tNav("spaces") },
+    { href: "/proposals", label: tNav("proposals") },
+    { href: "/search", label: tNav("search") },
+    { href: "/about", label: tNav("about") },
   ];
 
   return (
@@ -23,7 +23,7 @@ export function SiteHeader({ locale }: { locale: Locale }) {
               <Waves className="size-5" />
             </div>
             <div className="flex flex-col">
-              <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">{copy.nav.governanceIntelligence}</span>
+              <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">{tNav("governanceIntelligence")}</span>
               <span className="font-serif text-2xl leading-none">UnderTide</span>
             </div>
           </Link>
@@ -39,7 +39,7 @@ export function SiteHeader({ locale }: { locale: Locale }) {
                 </Link>
               ))}
             </nav>
-            <LocaleSwitcher currentLocale={locale} label={copy.nav.language} />
+            <LocaleSwitcher />
           </div>
         </div>
         <div className="flex flex-col gap-3 md:hidden">
@@ -54,7 +54,7 @@ export function SiteHeader({ locale }: { locale: Locale }) {
               </Link>
             ))}
           </nav>
-          <LocaleSwitcher currentLocale={locale} label={copy.nav.language} />
+          <LocaleSwitcher />
         </div>
       </div>
     </header>

@@ -170,19 +170,19 @@ async function syncProposals() {
   const previousState = options.full ? null : await getSyncState("proposals");
   const lastCreatedTs = previousState?.lastCreatedTs ? Number(previousState.lastCreatedTs) : null;
 
-  let skip = 0;
   let upserted = 0;
   let highestCreatedTs = lastCreatedTs ?? 0;
   let shouldStop = false;
   const touchedSpaceIds = new Set<string>();
+  let beforeCreated = options.full ? null : parseOptionalCursor(previousState?.lastCursor);
 
   while (!shouldStop) {
     const batch = await fetchGraphQL<{ proposals: SnapshotProposal[] }>(
       `
-        query GetProposals($first: Int!, $skip: Int!) {
+        query GetProposals($first: Int!, $where: ProposalWhere) {
           proposals(
             first: $first
-            skip: $skip
+            where: $where
             orderBy: "created"
             orderDirection: desc
           ) {
@@ -230,7 +230,10 @@ async function syncProposals() {
           }
         }
       `,
-      { first: PROPOSAL_PAGE_SIZE, skip }
+      {
+        first: PROPOSAL_PAGE_SIZE,
+        where: beforeCreated ? { created_lt: beforeCreated } : {},
+      }
     );
 
     const proposals = batch?.proposals ?? [];
@@ -249,15 +252,25 @@ async function syncProposals() {
       }
     }
 
-    skip += proposals.length;
-    console.log(`[proposals] fetched ${skip}`);
+    const oldestCreatedInBatch = Math.min(...proposals.map((proposal) => Number(proposal.created ?? 0)));
+    beforeCreated = Number.isFinite(oldestCreatedInBatch) && oldestCreatedInBatch > 0 ? oldestCreatedInBatch : null;
+
+    await safelyUpsertSyncState("proposals", {
+      last_cursor: beforeCreated ? String(beforeCreated) : null,
+    });
+
+    console.log(
+      `[proposals] fetched ${upserted} rows${beforeCreated ? `, next page before created=${beforeCreated}` : ""}`
+    );
 
     if (proposals.length < PROPOSAL_PAGE_SIZE) break;
+    if (!beforeCreated) break;
   }
 
   await refreshSpaceProposalCounts(Array.from(touchedSpaceIds));
 
   await safelyUpsertSyncState("proposals", {
+    last_cursor: null,
     last_created_ts: highestCreatedTs || null,
   });
 
@@ -493,6 +506,8 @@ async function upsertProposal(proposal: SnapshotProposal) {
   const scoresTotal = normalizeNumericValue(sanitizedProposal.scores_total);
   const scoresTotalValue = normalizeNumericValue(sanitizedProposal.scores_total_value);
 
+  await ensureProposalSpaceExists(sanitizedProposal.space);
+
   const proposalValues = {
     spaceId: sanitizedProposal.space.id,
     ipfs: sanitizedProposal.ipfs ?? null,
@@ -538,6 +553,56 @@ async function upsertProposal(proposal: SnapshotProposal) {
       .onConflictDoUpdate({
         target: snapshotProposals.id,
         set: proposalValues,
+      });
+  });
+}
+
+async function ensureProposalSpaceExists(space: SnapshotProposal["space"]) {
+  const sanitizedSpace = sanitizeValue(space);
+
+  await withDatabaseRetry(`ensureProposalSpaceExists(${sanitizedSpace.id})`, async () => {
+    await db
+      .insert(snapshotSpaces)
+      .values({
+        id: sanitizedSpace.id,
+        name: sanitizedSpace.name ?? sanitizedSpace.id,
+        about: null,
+        avatar: null,
+        network: null,
+        symbol: null,
+        verified: false,
+        categories: [],
+        followersCount: 0,
+        votesCount: 0,
+        twitter: null,
+        github: null,
+        coingecko: null,
+        website: null,
+        discussions: null,
+        flagged: false,
+        flagCode: 0,
+        hibernated: false,
+        turbo: false,
+        activeProposals: 0,
+        admins: [],
+        memberCount: 0,
+        proposalCount: 0,
+        strategies: [],
+        filters: null,
+        plugins: null,
+        raw: sanitizedSpace,
+        updatedAt: drizzleSql`now()`,
+      })
+      .onConflictDoUpdate({
+        target: snapshotSpaces.id,
+        set: {
+          name: drizzleSql`coalesce(${snapshotSpaces.name}, ${sanitizedSpace.name ?? sanitizedSpace.id})`,
+          raw: drizzleSql`case
+            when ${snapshotSpaces.raw} is null then ${JSON.stringify(sanitizedSpace)}::jsonb
+            else ${snapshotSpaces.raw}
+          end`,
+          updatedAt: drizzleSql`now()`,
+        },
       });
   });
 }
@@ -763,6 +828,12 @@ function parseCursorSkip(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function parseOptionalCursor(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function readNumberArg(flag: string) {

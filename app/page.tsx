@@ -7,7 +7,6 @@ import {
   MethodologySection,
   QuickEntrySection,
 } from "@/components/home-sections";
-import { getServerLocale } from "@/lib/i18n-server";
 
 export const metadata: Metadata = {
   title: "Web3 Governance Intelligence",
@@ -23,7 +22,6 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const locale = await getServerLocale();
   const [proposals, spaces] = await Promise.all([
     listProposals({ sort: "time", limit: 2 }),
     listSpaces({ sort: "activity", limit: 3 }),
@@ -31,11 +29,11 @@ export default async function HomePage() {
 
   return (
     <>
-      <Hero locale={locale} />
-      <QuickEntrySection locale={locale} />
-      <FeaturedProposalSection proposals={proposals} locale={locale} />
-      <FeaturedSpacesSection spaces={spaces} locale={locale} />
-      <MethodologySection locale={locale} />
+      <Hero />
+      <QuickEntrySection />
+      <FeaturedProposalSection proposals={proposals} />
+      <FeaturedSpacesSection spaces={spaces} />
+      <MethodologySection />
     </>
   );
 }

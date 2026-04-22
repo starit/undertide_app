@@ -56,9 +56,7 @@ export const snapshotSpaces = pgTable(
 export const snapshotSpaceMembers = pgTable(
   "snapshot_space_members",
   {
-    spaceId: text("space_id")
-      .notNull()
-      .references(() => snapshotSpaces.id, { onDelete: "cascade" }),
+    spaceId: text("space_id").notNull(),
     memberAddress: text("member_address").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -74,9 +72,7 @@ export const snapshotProposals = pgTable(
   "snapshot_proposals",
   {
     id: text("id").primaryKey(),
-    spaceId: text("space_id")
-      .notNull()
-      .references(() => snapshotSpaces.id, { onDelete: "cascade" }),
+    spaceId: text("space_id").notNull(),
     title: text("title").notNull(),
     body: text("body"),
     choices: jsonb("choices").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
@@ -134,9 +130,7 @@ export const snapshotProposals = pgTable(
 export const proposalTranslations = pgTable(
   "proposal_translations",
   {
-    proposalId: text("proposal_id")
-      .notNull()
-      .references(() => snapshotProposals.id, { onDelete: "cascade" }),
+    proposalId: text("proposal_id").notNull(),
     locale: text("locale").notNull(),
     title: text("title"),
     body: text("body"),

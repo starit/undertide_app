@@ -42,3 +42,85 @@ a {
 ::selection {
   background: rgba(29, 58, 50, 0.18);
 }
+
+.proposal-markdown {
+  @apply text-base leading-8;
+}
+
+.proposal-markdown > * + * {
+  @apply mt-5;
+}
+
+.proposal-markdown h1,
+.proposal-markdown h2,
+.proposal-markdown h3,
+.proposal-markdown h4 {
+  @apply font-serif text-foreground;
+}
+
+.proposal-markdown h1 {
+  @apply text-3xl;
+}
+
+.proposal-markdown h2 {
+  @apply text-2xl;
+}
+
+.proposal-markdown h3 {
+  @apply text-xl;
+}
+
+.proposal-markdown p,
+.proposal-markdown li,
+.proposal-markdown blockquote {
+  @apply text-muted-foreground;
+}
+
+.proposal-markdown ul {
+  @apply list-disc pl-6;
+}
+
+.proposal-markdown ol {
+  @apply list-decimal pl-6;
+}
+
+.proposal-markdown li + li {
+  @apply mt-2;
+}
+
+.proposal-markdown blockquote {
+  @apply border-l-2 border-border pl-4 italic;
+}
+
+.proposal-markdown code {
+  @apply rounded-sm bg-muted px-1.5 py-0.5 font-mono text-sm text-foreground;
+}
+
+.proposal-markdown pre {
+  @apply overflow-x-auto border border-border bg-card p-4 text-sm text-foreground;
+}
+
+.proposal-markdown pre code {
+  @apply bg-transparent p-0;
+}
+
+.proposal-markdown a {
+  @apply text-accent underline underline-offset-4;
+}
+
+.proposal-markdown hr {
+  @apply border-border;
+}
+
+.proposal-markdown table {
+  @apply w-full border-collapse border border-border text-sm;
+}
+
+.proposal-markdown th,
+.proposal-markdown td {
+  @apply border border-border px-3 py-2 text-left align-top;
+}
+
+.proposal-markdown th {
+  @apply bg-muted text-foreground;
+}

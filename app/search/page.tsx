@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { listProposals, listSpaces } from "@/lib/repository";
 import { SearchResults } from "@/components/search-results";
 import { SectionHeading } from "@/components/section-heading";
-import { getDictionary } from "@/lib/i18n";
-import { getServerLocale } from "@/lib/i18n-server";
+
+const INITIAL_SEARCH_LIMIT = 6;
 
 export const metadata: Metadata = {
   title: "Search Governance Data",
@@ -14,19 +15,21 @@ export const metadata: Metadata = {
 };
 
 export default async function SearchPage() {
-  const locale = await getServerLocale();
-  const copy = getDictionary(locale);
-  const [proposals, spaces] = await Promise.all([listProposals({ sort: "time" }), listSpaces({ sort: "activity" })]);
+  const tSearch = await getTranslations("search");
+  const [proposals, spaces] = await Promise.all([
+    listProposals({ sort: "time", limit: INITIAL_SEARCH_LIMIT }),
+    listSpaces({ sort: "activity", verified: true, limit: INITIAL_SEARCH_LIMIT }),
+  ]);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
       <SectionHeading
-        eyebrow={copy.search.eyebrow}
-        title={copy.search.title}
-        description={copy.search.description}
+        eyebrow={tSearch("eyebrow")}
+        title={tSearch("title")}
+        description={tSearch("description")}
       />
       <div className="mt-10">
-        <SearchResults proposals={proposals} spaces={spaces} locale={locale} />
+        <SearchResults proposals={proposals} spaces={spaces} />
       </div>
     </section>
   );

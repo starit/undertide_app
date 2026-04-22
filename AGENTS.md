@@ -30,9 +30,12 @@ Developer reference for AI agents and contributors working in this repository.
 ├── examples/                   # Benchmark scripts
 ├── lib/
 │   ├── db.ts                   # Drizzle client setup
-│   ├── data.ts                 # Mock/fallback data (used when DB unavailable)
+│   ├── i18n.ts                 # Shared UI message dictionary and locale helpers
+│   ├── i18n-server.ts          # Server-only locale resolution from cookie
 │   ├── repository.ts           # All DB queries and data mapping
 │   └── types.ts                # Shared TypeScript interfaces
+├── i18n/
+│   └── request.ts              # next-intl request config
 ├── scripts/                    # Standalone operational scripts
 ├── drizzle.config.ts           # Drizzle-kit configuration
 └── AGENTS.md                   # This file
@@ -83,7 +86,7 @@ Copy `.env.example` to `.env` to get started.
 
 **Source of truth: [`db/drizzle-schema.ts`](db/drizzle-schema.ts)** — read that file directly for column names, types, and constraints. Do not duplicate it here.
 
-7 tables: `snapshot_spaces`, `snapshot_space_members`, `snapshot_proposals`, `proposal_enrichments`, `proposal_translations`, `snapshot_sync_state`, `snapshot_sync_runs`.
+6 tables: `snapshot_spaces`, `snapshot_space_members`, `snapshot_proposals`, `proposal_translations`, `snapshot_sync_state`, `snapshot_sync_runs`.
 
 Notable conventions:
 - All tables have `created_at` and `updated_at` (`timestamptz NOT NULL DEFAULT now()`), set on insert and upsert respectively
@@ -229,6 +232,39 @@ npx tsx scripts/translate-proposals.ts --limit 50 --overwrite
 | `--overwrite` | Overwrite existing translations (default: skip) |
 
 Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
+
+---
+
+## Multilingual Workflow
+
+UI i18n uses `next-intl` without locale-prefixed routes.
+
+- Supported UI locales: `en`, `zh`, `ja`, `ko`
+- Locale source: `ui_locale` cookie
+- Server locale resolution: `lib/i18n-server.ts`
+- next-intl request config: `i18n/request.ts`
+- Shared UI messages: `lib/i18n.ts`
+
+### Rules
+
+1. Use `getServerLocale()` only in Server Components, layouts, and metadata functions
+2. Do not import `next/headers` into shared or client code
+3. Keep UI copy in `lib/i18n.ts`
+4. Proposal body translation is separate from UI i18n and comes from `proposal_translations`
+5. UI locale and proposal content locale are independent
+
+### Updating UI copy
+
+1. Add or update the message in `lib/i18n.ts` for all four locales
+2. Use the shared message from server or client code
+3. For parameterized strings, use `formatMessage(...)`
+4. Keep message keys stable; do not create near-duplicate keys for the same UI concept
+
+### Choosing the right mechanism
+
+- UI labels, buttons, headings, helper text: `next-intl` messages
+- Proposal title/body/summary translations: database-backed `proposal_translations`
+- Dynamic proposal detail language switcher: query param `?locale=...`, not the UI locale cookie
 
 ---
 

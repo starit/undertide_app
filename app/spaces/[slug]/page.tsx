@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { getSpaceBySlug, listSpaceProposals } from "@/lib/repository";
@@ -7,8 +8,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDictionary } from "@/lib/i18n";
-import { getServerLocale } from "@/lib/i18n-server";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -35,8 +34,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function SpaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const locale = await getServerLocale();
-  const copy = getDictionary(locale);
+  const tSpaces = await getTranslations("spaces");
   const { slug } = await params;
   const [space, proposals] = await Promise.all([getSpaceBySlug(slug), listSpaceProposals(slug, { sort: "time" })]);
 
@@ -71,35 +69,35 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
 
         <Card>
           <CardHeader>
-            <CardTitle>{copy.spaces.governanceProfile}</CardTitle>
+            <CardTitle>{tSpaces("governanceProfile")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.followersLabel}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tSpaces("followersLabel")}</p>
                 <p className="mt-2 text-xl font-semibold">{space.followers.toLocaleString()}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.activity}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tSpaces("activity")}</p>
                 <p className="mt-2 text-xl font-semibold">{space.activityScore} / 100</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.proposalsLabel}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tSpaces("proposalsLabel")}</p>
                 <p className="mt-2 text-xl font-semibold">{space.proposals}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.verification}</p>
-                <p className="mt-2 text-xl font-semibold">{space.verified ? copy.spaces.verifiedStatus : copy.spaces.unverifiedStatus}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{tSpaces("verification")}</p>
+                <p className="mt-2 text-xl font-semibold">{space.verified ? tSpaces("verifiedStatus") : tSpaces("unverifiedStatus")}</p>
               </div>
             </div>
             <Button variant="outline" asChild>
               <a href={space.website} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                {copy.spaces.officialSite} <ArrowUpRight className="size-4" />
+                {tSpaces("officialSite")} <ArrowUpRight className="size-4" />
               </a>
             </Button>
             <Button variant="outline" asChild>
               <a href={space.forum} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                {copy.spaces.governanceForum} <ArrowUpRight className="size-4" />
+                {tSpaces("governanceForum")} <ArrowUpRight className="size-4" />
               </a>
             </Button>
           </CardContent>
@@ -108,10 +106,10 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
 
       <div className="mt-12">
         <div className="mb-8 flex flex-col gap-3">
-          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{copy.spaces.proposalListEyebrow}</span>
-          <h2 className="font-serif text-4xl">{copy.spaces.proposalListTitle}</h2>
+          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{tSpaces("proposalListEyebrow")}</span>
+          <h2 className="font-serif text-4xl">{tSpaces("proposalListTitle")}</h2>
         </div>
-        <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} locale={locale} />
+        <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} />
       </div>
     </section>
   );

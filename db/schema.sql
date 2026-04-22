@@ -35,7 +35,7 @@ create index if not exists idx_snapshot_spaces_network on snapshot_spaces(networ
 create index if not exists idx_snapshot_spaces_created_at on snapshot_spaces(created_at desc);
 
 create table if not exists snapshot_space_members (
-  space_id text not null references snapshot_spaces(id) on delete cascade,
+  space_id text not null,
   member_address text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -47,7 +47,7 @@ create index if not exists idx_snapshot_space_members_space_id on snapshot_space
 
 create table if not exists snapshot_proposals (
   id text primary key,
-  space_id text not null references snapshot_spaces(id) on delete cascade,
+  space_id text not null,
   title text not null,
   body text,
   choices jsonb not null default '[]'::jsonb,
@@ -106,7 +106,7 @@ create index if not exists idx_snapshot_proposals_end_at on snapshot_proposals(e
 create index if not exists idx_snapshot_proposals_author on snapshot_proposals(author);
 
 create table if not exists proposal_enrichments (
-  proposal_id text primary key references snapshot_proposals(id) on delete cascade,
+  proposal_id text primary key,
   readable_content text,
   ai_summary text,
   importance_label text,
@@ -118,7 +118,7 @@ create table if not exists proposal_enrichments (
 );
 
 create table if not exists proposal_translations (
-  proposal_id text not null references snapshot_proposals(id) on delete cascade,
+  proposal_id text not null,
   locale text not null,
   title text,
   body text,

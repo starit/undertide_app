@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Space } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -8,14 +9,13 @@ import { setSpaceView } from "@/store/ui-slice";
 import { SpaceCard } from "@/components/space-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatMessage, Locale, getDictionary } from "@/lib/i18n";
 
 const categoryOptions = ["All", "Layer 2", "Treasury", "Risk", "Protocol", "DEX", "Identity", "Public Goods"] as const;
 
-export function SpacesBrowser({ spaces, locale }: { spaces: Space[]; locale: Locale }) {
+export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
-  const copy = getDictionary(locale);
+  const tSpaces = useTranslations("spaces");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof categoryOptions)[number]>("All");
   const [verifiedOnly, setVerifiedOnly] = useState(true);
@@ -89,14 +89,14 @@ export function SpacesBrowser({ spaces, locale }: { spaces: Space[]; locale: Loc
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={copy.spaces.searchPlaceholder}
+            placeholder={tSpaces("searchPlaceholder")}
             className="pl-10"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {[
-            { value: "Activity", label: copy.spaces.activity },
-            { value: "Followers", label: copy.spaces.followers },
+            { value: "Activity", label: tSpaces("activity") },
+            { value: "Followers", label: tSpaces("followers") },
           ].map((option) => (
             <Button
               key={option.value}
@@ -108,7 +108,7 @@ export function SpacesBrowser({ spaces, locale }: { spaces: Space[]; locale: Loc
             </Button>
           ))}
           <Button variant={verifiedOnly ? "default" : "outline"} size="sm" onClick={() => setVerifiedOnly((value) => !value)}>
-            {copy.spaces.verified}
+            {tSpaces("verified")}
           </Button>
           <Button
             variant={view === "list" ? "secondary" : "ghost"}
@@ -142,13 +142,13 @@ export function SpacesBrowser({ spaces, locale }: { spaces: Space[]; locale: Loc
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
-          {isLoading ? copy.spaces.searching : formatMessage(copy.spaces.loaded, { count: results.length })}
+          {isLoading ? tSpaces("searching") : tSpaces("loaded", { count: results.length })}
         </span>
       </div>
 
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
         {results.map((space) => (
-          <SpaceCard key={space.slug} space={space} locale={locale} />
+          <SpaceCard key={space.slug} space={space} />
         ))}
       </div>
     </div>

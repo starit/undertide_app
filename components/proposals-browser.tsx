@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Proposal, ProposalStatus } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -8,46 +9,90 @@ import { setProposalView } from "@/store/ui-slice";
 import { ProposalCard } from "@/components/proposal-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Locale, getDictionary } from "@/lib/i18n";
 
 const statusOptions: Array<ProposalStatus | "All"> = ["All", "Active", "Upcoming", "Closed", "Executed"];
 const sortOptions = ["Time", "Heat"] as const;
+const DEFAULT_PROPOSAL_LIMIT = 24;
+const LOAD_MORE_STEP = 12;
 
 export function ProposalsBrowser({
   proposals,
   initialSpaceSlug,
-  locale,
 }: {
   proposals: Proposal[];
   initialSpaceSlug?: string;
-  locale: Locale;
 }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.proposalView);
-  const copy = getDictionary(locale);
+  const tProposals = useTranslations("proposals");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("All");
   const [sort, setSort] = useState<(typeof sortOptions)[number]>("Time");
-  const [visibleCount, setVisibleCount] = useState(4);
+  const [limit, setLimit] = useState(DEFAULT_PROPOSAL_LIMIT);
+  const [results, setResults] = useState(proposals);
+  const [isLoading, setIsLoading] = useState(false);
+  const deferredQuery = useDeferredValue(query);
 
-  const filtered = useMemo(() => {
-    const base = proposals.filter((proposal) => {
-      const matchesSpace = initialSpaceSlug ? proposal.spaceSlug === initialSpaceSlug : true;
-      const matchesQuery =
-        proposal.title.toLowerCase().includes(query.toLowerCase()) ||
-        proposal.protocol.toLowerCase().includes(query.toLowerCase()) ||
-        proposal.summary.toLowerCase().includes(query.toLowerCase());
-      const matchesStatus = status === "All" ? true : proposal.status === status;
-      return matchesSpace && matchesQuery && matchesStatus;
+  useEffect(() => {
+    setResults(proposals);
+  }, [proposals]);
+
+  useEffect(() => {
+    setLimit(DEFAULT_PROPOSAL_LIMIT);
+  }, [deferredQuery, sort, status, initialSpaceSlug]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const searchParams = new URLSearchParams({
+      sort: sort.toLowerCase(),
+      limit: String(limit),
     });
 
-    return [...base].sort((a, b) => {
-      if (sort === "Heat") return b.heat - a.heat;
-      return +new Date(b.publishedAt) - +new Date(a.publishedAt);
-    });
-  }, [initialSpaceSlug, proposals, query, sort, status]);
+    if (deferredQuery.trim()) {
+      searchParams.set("q", deferredQuery.trim());
+    }
 
-  const visible = filtered.slice(0, visibleCount);
+    if (status !== "All") {
+      searchParams.set("status", status);
+    }
+
+    if (initialSpaceSlug) {
+      searchParams.set("spaceSlug", initialSpaceSlug);
+    }
+
+    async function loadProposals() {
+      setIsLoading(true);
+
+      try {
+        const response = await fetch(`/api/proposals?${searchParams.toString()}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Proposals request failed: ${response.status}`);
+        }
+
+        const payload = (await response.json()) as { data?: Proposal[] };
+        if (!controller.signal.aborted) {
+          setResults(Array.isArray(payload.data) ? payload.data : []);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("[ProposalsBrowser] failed to load proposals", error);
+          setResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadProposals();
+
+    return () => controller.abort();
+  }, [deferredQuery, initialSpaceSlug, limit, sort, status]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -57,7 +102,7 @@ export function ProposalsBrowser({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={copy.proposals.searchPlaceholder}
+            placeholder={tProposals("searchPlaceholder")}
             className="pl-10"
           />
         </div>
@@ -69,7 +114,7 @@ export function ProposalsBrowser({
               size="sm"
               onClick={() => setStatus(option)}
             >
-              {statusLabel(option, copy)}
+              {statusLabel(option, tProposals)}
             </Button>
           ))}
         </div>
@@ -81,7 +126,7 @@ export function ProposalsBrowser({
               size="sm"
               onClick={() => setSort(option)}
             >
-              {option === "Time" ? copy.proposals.time : copy.proposals.heat}
+              {option === "Time" ? tProposals("time") : tProposals("heat")}
             </Button>
           ))}
           <Button
@@ -101,16 +146,22 @@ export function ProposalsBrowser({
         </div>
       </div>
 
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          {isLoading ? tProposals("searching") : tProposals("loaded", { count: results.length })}
+        </span>
+      </div>
+
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
-        {visible.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} locale={locale} />
+        {results.map((proposal) => (
+          <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} />
         ))}
       </div>
 
-      {visible.length < filtered.length ? (
+      {results.length >= limit ? (
         <div>
-          <Button variant="outline" onClick={() => setVisibleCount((count) => count + 4)}>
-            {copy.proposals.loadMore}
+          <Button variant="outline" onClick={() => setLimit((count) => count + LOAD_MORE_STEP)}>
+            {tProposals("loadMore")}
           </Button>
         </div>
       ) : null}
@@ -118,17 +169,17 @@ export function ProposalsBrowser({
   );
 }
 
-function statusLabel(status: ProposalStatus | "All", copy: ReturnType<typeof getDictionary>) {
+function statusLabel(status: ProposalStatus | "All", tProposals: ReturnType<typeof useTranslations<"proposals">>) {
   switch (status) {
     case "Active":
-      return copy.proposals.active;
+      return tProposals("active");
     case "Upcoming":
-      return copy.proposals.upcoming;
+      return tProposals("upcoming");
     case "Closed":
-      return copy.proposals.closed;
+      return tProposals("closed");
     case "Executed":
-      return copy.proposals.executed;
+      return tProposals("executed");
     default:
-      return copy.proposals.all;
+      return tProposals("all");
   }
 }
