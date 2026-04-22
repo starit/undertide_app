@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowUpRight, Languages, Link2 } from "lucide-react";
@@ -102,6 +103,8 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
 
   const activeLocale = proposal.translation?.locale ?? "en";
   const bodyContent = proposal.body || proposal.summary;
+  const selectableLocales = ["en", ...availableLocales.filter((locale) => locale !== "en")];
+  const showReadingLocale = availableLocales.length > 0;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
@@ -109,14 +112,18 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
         <div className="flex flex-col gap-8">
           <div className="border border-border bg-card p-8 shadow-panel">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="muted">{proposal.protocol}</Badge>
+              <Link href={`/spaces/${proposal.spaceSlug}`} className="inline-flex">
+                <Badge variant="muted" className="transition-colors hover:border-foreground/20 hover:bg-accent">
+                  {proposal.protocol}
+                </Badge>
+              </Link>
               <Badge>{proposal.status}</Badge>
               <Badge variant="muted" className="gap-1">
                 <Languages className="size-3.5" />
                 {activeLocale.toUpperCase()}
               </Badge>
             </div>
-            <h1 className="mt-5 max-w-4xl font-serif text-5xl leading-tight">{proposal.title}</h1>
+            <h1 className="mt-5 max-w-4xl font-serif text-4xl leading-tight md:text-[2.75rem]">{proposal.title}</h1>
             {proposal.labels.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {proposal.labels.map((label) => (
@@ -158,42 +165,41 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
             </div>
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <CardTitle>{tProposals("readingLocale")}</CardTitle>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {localeOptions.map((option) => {
-                  const isAvailable = option.value === "en" || availableLocales.includes(option.value);
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      size="sm"
-                      variant={activeLocale === option.value ? "default" : "outline"}
-                      disabled={!isAvailable || isPending}
-                      onClick={() => handleLocaleChange(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-7 text-muted-foreground">
-                {isLoading
-                  ? tProposals("refreshingProposalContent")
-                  : proposal.translation
-                    ? formatMessage(tProposals("translatedBy"), {
-                        locale: proposal.translation.locale.toUpperCase(),
-                        by: proposal.translation.translatedBy ?? "the translation pipeline",
-                      })
-                    : tProposals("defaultSourceContent")}
-              </p>
-            </CardContent>
-          </Card>
+          {showReadingLocale && (
+            <Card>
+              <CardHeader className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                <CardTitle className="text-base">{tProposals("readingLocale")}</CardTitle>
+                <div className="flex flex-wrap gap-2">
+                  {localeOptions
+                    .filter((option) => selectableLocales.includes(option.value))
+                    .map((option) => (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        size="sm"
+                        variant={activeLocale === option.value ? "default" : "outline"}
+                        disabled={isPending}
+                        onClick={() => handleLocaleChange(option.value)}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <p className="text-xs leading-6 text-muted-foreground">
+                  {isLoading
+                    ? tProposals("refreshingProposalContent")
+                    : proposal.translation
+                      ? formatMessage(tProposals("translatedBy"), {
+                          locale: proposal.translation.locale.toUpperCase(),
+                          by: proposal.translation.translatedBy ?? "the translation pipeline",
+                        })
+                      : tProposals("defaultSourceContent")}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

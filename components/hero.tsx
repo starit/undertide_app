@@ -2,13 +2,18 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { Compass, Languages, Search, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PlatformStats } from "@/lib/types";
 
-export async function Hero() {
+type HeroProps = {
+  stats: PlatformStats;
+};
+
+export async function Hero({ stats }: HeroProps) {
   const tHome = await getTranslations("home");
-  const stats = [
-    { label: tHome("trackedSpaces"), value: "120+" },
-    { label: tHome("proposalSignals"), value: "4.8k" },
-    { label: tHome("readableBriefs"), value: tHome("multiLang") },
+  const heroStats = [
+    { label: tHome("trackedSpaces"), value: stats.spacesCount.toLocaleString() },
+    { label: tHome("proposalSignals"), value: stats.proposalsCount.toLocaleString() },
+    { label: tHome("activeProposals"), value: stats.activeProposalsCount.toLocaleString() },
   ];
 
   const points = [
@@ -58,7 +63,7 @@ export async function Hero() {
               </Button>
             </div>
             <div className="grid gap-px border border-border bg-border md:grid-cols-3">
-              {stats.map((stat) => (
+              {heroStats.map((stat) => (
                 <div key={stat.label} className="bg-background px-4 py-3">
                   <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{stat.label}</p>
                   <p className="mt-2 font-serif text-2xl">{stat.value}</p>

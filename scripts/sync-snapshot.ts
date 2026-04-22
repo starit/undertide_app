@@ -506,8 +506,6 @@ async function upsertProposal(proposal: SnapshotProposal) {
   const scoresTotal = normalizeNumericValue(sanitizedProposal.scores_total);
   const scoresTotalValue = normalizeNumericValue(sanitizedProposal.scores_total_value);
 
-  await ensureProposalSpaceExists(sanitizedProposal.space);
-
   const proposalValues = {
     spaceId: sanitizedProposal.space.id,
     ipfs: sanitizedProposal.ipfs ?? null,
@@ -553,56 +551,6 @@ async function upsertProposal(proposal: SnapshotProposal) {
       .onConflictDoUpdate({
         target: snapshotProposals.id,
         set: proposalValues,
-      });
-  });
-}
-
-async function ensureProposalSpaceExists(space: SnapshotProposal["space"]) {
-  const sanitizedSpace = sanitizeValue(space);
-
-  await withDatabaseRetry(`ensureProposalSpaceExists(${sanitizedSpace.id})`, async () => {
-    await db
-      .insert(snapshotSpaces)
-      .values({
-        id: sanitizedSpace.id,
-        name: sanitizedSpace.name ?? sanitizedSpace.id,
-        about: null,
-        avatar: null,
-        network: null,
-        symbol: null,
-        verified: false,
-        categories: [],
-        followersCount: 0,
-        votesCount: 0,
-        twitter: null,
-        github: null,
-        coingecko: null,
-        website: null,
-        discussions: null,
-        flagged: false,
-        flagCode: 0,
-        hibernated: false,
-        turbo: false,
-        activeProposals: 0,
-        admins: [],
-        memberCount: 0,
-        proposalCount: 0,
-        strategies: [],
-        filters: null,
-        plugins: null,
-        raw: sanitizedSpace,
-        updatedAt: drizzleSql`now()`,
-      })
-      .onConflictDoUpdate({
-        target: snapshotSpaces.id,
-        set: {
-          name: drizzleSql`coalesce(${snapshotSpaces.name}, ${sanitizedSpace.name ?? sanitizedSpace.id})`,
-          raw: drizzleSql`case
-            when ${snapshotSpaces.raw} is null then ${JSON.stringify(sanitizedSpace)}::jsonb
-            else ${snapshotSpaces.raw}
-          end`,
-          updatedAt: drizzleSql`now()`,
-        },
       });
   });
 }

@@ -258,6 +258,26 @@ UI i18n uses `next-intl` without locale-prefixed routes.
 1. Add or update the message in `lib/i18n.ts` for all four locales
 2. Use the shared message from server or client code
 3. For parameterized strings, use `formatMessage(...)`
+
+---
+
+## API-First Product Rule
+
+Any new product feature must start from the API and query layer, not the page layer.
+
+### Rules
+
+1. Before adding a new UI feature, verify that the API/repository layer can support it with an efficient query plan
+2. If the data cannot be queried efficiently, do **not** ship the page feature yet
+3. In that case, first change the database schema, sync pipeline, caching strategy, repository queries, or API contract as needed
+4. Only connect the feature to the page after the API can serve it efficiently and predictably
+5. This rule applies to all new product features, not just search or analytics
+
+### Practical meaning
+
+- Do not add page features that depend on expensive full-table scans, large in-memory filtering, or ad hoc client-side data stitching
+- Prefer pushing filtering, sorting, pagination, and aggregation into efficient DB/API queries
+- If a proposed feature is valuable but the current API is not ready, stop at the API design/change step and defer the page integration
 4. Keep message keys stable; do not create near-duplicate keys for the same UI concept
 
 ### Choosing the right mechanism

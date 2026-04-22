@@ -77,3 +77,15 @@ export interface SnapshotSyncState {
     error: string | null;
   } | null;
 }
+
+export interface PlatformStats {
+  spacesCount: number;
+  verifiedSpacesCount: number;
+  proposalsCount: number;
+  activeProposalsCount: number;
+  translatedProposalsCount: number;
+  translationsCount: number;
+  translationLocaleCounts: Record<string, number>;
+  lastSuccessfulSpaceSyncAt: string | null;
+  lastSuccessfulProposalSyncAt: string | null;
+}

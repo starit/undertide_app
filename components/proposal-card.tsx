@@ -18,7 +18,11 @@ export function ProposalCard({ proposal, compact = false }: { proposal: Proposal
           <Badge variant="muted">{proposal.protocol}</Badge>
           <Badge>{proposal.status}</Badge>
         </div>
-        <CardTitle className={compact ? "text-xl" : undefined}>{proposal.title}</CardTitle>
+        <CardTitle className={compact ? "text-xl" : undefined}>
+          <Link href={`/proposals/${proposal.id}`} className="transition-opacity hover:opacity-80">
+            {proposal.title}
+          </Link>
+        </CardTitle>
       </CardHeader>
       <CardContent className={compact ? "p-5 pt-0" : undefined}>
         <p className="text-sm leading-7 text-muted-foreground">{proposal.summary}</p>

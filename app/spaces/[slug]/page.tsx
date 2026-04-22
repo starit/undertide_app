@@ -52,7 +52,7 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
             <div className="min-w-0">
               <div className="flex items-center gap-3">
                 <h1 className="font-serif text-5xl leading-tight">{space.name}</h1>
-                {space.verified ? <BadgeCheck className="size-5 text-[#1d3a32]" /> : null}
+                {space.verified ? <BadgeCheck className="size-5 text-[#2563eb]" /> : null}
               </div>
               <p className="mt-2 font-mono text-xs uppercase tracking-[0.24em] text-muted-foreground">{space.slug}</p>
             </div>

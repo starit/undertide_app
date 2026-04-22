@@ -8,7 +8,7 @@ import {
   snapshotSpaces,
 } from "@/db/drizzle-schema";
 import { getDb, hasDatabase } from "@/lib/db";
-import { Proposal, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
+import { PlatformStats, Proposal, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
 
 type ProposalFilters = {
   q?: string;
@@ -129,8 +129,13 @@ export async function listSnapshotSyncStates(entityTypes?: string[]): Promise<Sn
   return records.map(mapSnapshotSyncState);
 }
 
+export async function getPlatformStats(): Promise<PlatformStats> {
+  return getCachedPlatformStats();
+}
+
 const SPACE_LIST_REVALIDATE_SECONDS = 120;
 const SPACE_DETAIL_REVALIDATE_SECONDS = 300;
+const PLATFORM_STATS_REVALIDATE_SECONDS = 120;
 
 const getCachedSpaces = unstable_cache(
   async (query: NormalizedSpaceFilters) => {
@@ -153,6 +158,15 @@ const getCachedSpaceBySlug = unstable_cache(
   {
     revalidate: SPACE_DETAIL_REVALIDATE_SECONDS,
     tags: ["spaces"],
+  }
+);
+
+const getCachedPlatformStats = unstable_cache(
+  async () => fetchPlatformStats(),
+  ["platform-stats"],
+  {
+    revalidate: PLATFORM_STATS_REVALIDATE_SECONDS,
+    tags: ["spaces", "proposals", "translations", "sync"],
   }
 );
 
@@ -387,6 +401,83 @@ async function fetchSnapshotSyncStates(entityTypes?: string[]): Promise<Snapshot
   }
 }
 
+async function fetchPlatformStats(): Promise<PlatformStats> {
+  if (!hasDatabase) {
+    return emptyPlatformStats();
+  }
+
+  try {
+    const db = getDb();
+
+    const [
+      spacesSummaryRows,
+      proposalsSummaryRows,
+      translationsSummaryRows,
+      translationLocaleRows,
+      syncStateRows,
+    ] = await Promise.all([
+      db
+        .select({
+          spacesCount: sql<number>`count(*)::int`,
+          verifiedSpacesCount: sql<number>`count(*) filter (where ${snapshotSpaces.verified})::int`,
+        })
+        .from(snapshotSpaces),
+      db
+        .select({
+          proposalsCount: sql<number>`count(*)::int`,
+          activeProposalsCount: sql<number>`count(*) filter (where ${snapshotProposals.state} = 'active')::int`,
+        })
+        .from(snapshotProposals),
+      db
+        .select({
+          translationsCount: sql<number>`count(*)::int`,
+          translatedProposalsCount: sql<number>`count(distinct ${proposalTranslations.proposalId})::int`,
+        })
+        .from(proposalTranslations),
+      db
+        .select({
+          locale: proposalTranslations.locale,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(proposalTranslations)
+        .groupBy(proposalTranslations.locale),
+      db
+        .select({
+          entityType: snapshotSyncState.entityType,
+          lastSuccessAt: snapshotSyncState.lastSuccessAt,
+        })
+        .from(snapshotSyncState)
+        .where(inArray(snapshotSyncState.entityType, ["spaces", "proposals"])),
+    ]);
+
+    const spacesSummary = spacesSummaryRows[0];
+    const proposalsSummary = proposalsSummaryRows[0];
+    const translationsSummary = translationsSummaryRows[0];
+
+    const translationLocaleCounts = Object.fromEntries(
+      translationLocaleRows.map((row) => [row.locale, row.count ?? 0])
+    );
+
+    const syncStateMap = new Map(
+      syncStateRows.map((row) => [row.entityType, row.lastSuccessAt?.toISOString() ?? null] as const)
+    );
+
+    return {
+      spacesCount: spacesSummary?.spacesCount ?? 0,
+      verifiedSpacesCount: spacesSummary?.verifiedSpacesCount ?? 0,
+      proposalsCount: proposalsSummary?.proposalsCount ?? 0,
+      activeProposalsCount: proposalsSummary?.activeProposalsCount ?? 0,
+      translatedProposalsCount: translationsSummary?.translatedProposalsCount ?? 0,
+      translationsCount: translationsSummary?.translationsCount ?? 0,
+      translationLocaleCounts,
+      lastSuccessfulSpaceSyncAt: syncStateMap.get("spaces") ?? null,
+      lastSuccessfulProposalSyncAt: syncStateMap.get("proposals") ?? null,
+    };
+  } catch {
+    return emptyPlatformStats();
+  }
+}
+
 function mapSpace(space: SlimSpaceRecord): Space {
   const categories = deriveSpaceCategories(space);
   const summary = normalizeText(space.about) || `Governance space on ${space.network ?? "Snapshot"}.`;
@@ -478,6 +569,20 @@ function mapSnapshotSyncState(record: SnapshotSyncStateRecord): SnapshotSyncStat
           error: record.latestRun.error,
         }
       : null,
+  };
+}
+
+function emptyPlatformStats(): PlatformStats {
+  return {
+    spacesCount: 0,
+    verifiedSpacesCount: 0,
+    proposalsCount: 0,
+    activeProposalsCount: 0,
+    translatedProposalsCount: 0,
+    translationsCount: 0,
+    translationLocaleCounts: {},
+    lastSuccessfulSpaceSyncAt: null,
+    lastSuccessfulProposalSyncAt: null,
   };
 }
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { listProposals, listSpaces } from "@/lib/repository";
+import { getPlatformStats, listProposals, listSpaces } from "@/lib/repository";
 import { Hero } from "@/components/hero";
 import {
   FeaturedProposalSection,
@@ -22,14 +22,15 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const [proposals, spaces] = await Promise.all([
+  const [stats, proposals, spaces] = await Promise.all([
+    getPlatformStats(),
     listProposals({ sort: "time", limit: 2 }),
     listSpaces({ sort: "activity", limit: 3 }),
   ]);
 
   return (
     <>
-      <Hero />
+      <Hero stats={stats} />
       <QuickEntrySection />
       <FeaturedProposalSection proposals={proposals} />
       <FeaturedSpacesSection spaces={spaces} />
