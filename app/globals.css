@@ -44,7 +44,7 @@ a {
 }
 
 .proposal-markdown {
-  @apply text-base leading-8;
+  @apply break-words text-sm leading-7 md:text-base md:leading-8;
 }
 
 .proposal-markdown > * + * {
@@ -113,7 +113,7 @@ a {
 }
 
 .proposal-markdown table {
-  @apply w-full border-collapse border border-border text-sm;
+  @apply block w-full overflow-x-auto border-collapse border border-border text-sm;
 }
 
 .proposal-markdown th,

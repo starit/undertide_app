@@ -107,10 +107,10 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
   const showReadingLocale = availableLocales.length > 0;
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
+    <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
       <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="flex flex-col gap-8">
-          <div className="border border-border bg-card p-8 shadow-panel">
+          <div className="border border-border bg-card p-5 shadow-panel md:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <Link href={`/spaces/${proposal.spaceSlug}`} className="inline-flex">
                 <Badge variant="muted" className="transition-colors hover:border-foreground/20 hover:bg-accent">
@@ -123,7 +123,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 {activeLocale.toUpperCase()}
               </Badge>
             </div>
-            <h1 className="mt-5 max-w-4xl font-serif text-4xl leading-tight md:text-[2.75rem]">{proposal.title}</h1>
+            <h1 className="mt-5 max-w-4xl text-balance font-serif text-3xl leading-tight md:text-[2.75rem]">{proposal.title}</h1>
             {proposal.labels.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {proposal.labels.map((label) => (
@@ -133,7 +133,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 ))}
               </div>
             )}
-            <div className="mt-6 grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
+            <div className="mt-6 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2 md:grid-cols-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("published")}</p>
                 <p className="mt-2">{new Date(proposal.publishedAt).toLocaleString(uiLocale)}</p>
@@ -169,7 +169,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
             <Card>
               <CardHeader className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
                 <CardTitle className="text-base">{tProposals("readingLocale")}</CardTitle>
-                <div className="flex flex-wrap gap-2">
+                <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {localeOptions
                     .filter((option) => selectableLocales.includes(option.value))
                     .map((option) => (
@@ -180,6 +180,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                         variant={activeLocale === option.value ? "default" : "outline"}
                         disabled={isPending}
                         onClick={() => handleLocaleChange(option.value)}
+                        className="shrink-0"
                       >
                         {option.label}
                       </Button>
@@ -206,7 +207,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
               <CardTitle>{tProposals("proposalContent")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="proposal-markdown text-muted-foreground">
+              <div className="proposal-markdown min-w-0 text-muted-foreground">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -226,13 +227,13 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
               <CardTitle>{tProposals("sourceLinks")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <Button variant="outline" asChild>
+              <Button variant="outline" asChild className="w-full">
                 <a href={proposal.proposalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
                   {tProposals("originalProposal")} <ArrowUpRight className="size-4" />
                 </a>
               </Button>
               {proposal.discussion && (
-                <Button variant="outline" asChild>
+                <Button variant="outline" asChild className="w-full">
                   <a href={proposal.discussion} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
                     {tProposals("discussionThread")} <ArrowUpRight className="size-4" />
                   </a>

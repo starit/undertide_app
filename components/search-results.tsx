@@ -88,7 +88,7 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
 
   return (
     <div className="flex flex-col gap-12">
-      <div className="border border-border bg-card p-5">
+      <div className="border border-border bg-card p-4 md:p-5">
         <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tSearch("placeholder")} />
       </div>
 
@@ -130,7 +130,7 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
       {(results.proposals.length >= limit || results.spaces.length >= limit) && (
         <button
           type="button"
-          className="w-fit border border-border px-5 py-3 text-sm font-medium"
+          className="w-full border border-border px-5 py-3 text-sm font-medium sm:w-fit"
           onClick={() => setLimit((value) => value + LOAD_MORE_STEP)}
         >
           {tSearch("loadMore")}

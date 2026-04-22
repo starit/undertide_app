@@ -98,7 +98,7 @@ export function ProposalsBrowser({
     <div className="flex flex-col gap-8">
       <div className="grid gap-4 border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:p-5">
         <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -106,13 +106,14 @@ export function ProposalsBrowser({
             className="pl-10"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {statusOptions.map((option) => (
             <Button
               key={option}
               variant={option === status ? "default" : "outline"}
               size="sm"
               onClick={() => setStatus(option)}
+              className="shrink-0"
             >
               {statusLabel(option, tProposals)}
             </Button>
@@ -160,7 +161,7 @@ export function ProposalsBrowser({
 
       {results.length >= limit ? (
         <div>
-          <Button variant="outline" onClick={() => setLimit((count) => count + LOAD_MORE_STEP)}>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setLimit((count) => count + LOAD_MORE_STEP)}>
             {tProposals("loadMore")}
           </Button>
         </div>

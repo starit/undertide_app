@@ -54,9 +54,9 @@ export default async function AboutPage() {
         </Card>
       </div>
 
-      <div className="mt-8 grid gap-6 border border-border bg-card p-8 md:grid-cols-2">
+      <div className="mt-8 grid gap-6 border border-border bg-card p-5 md:grid-cols-2 md:p-8">
         <div>
-          <h2 className="font-serif text-3xl">{tAbout("supportContact")}</h2>
+          <h2 className="font-serif text-2xl md:text-3xl">{tAbout("supportContact")}</h2>
           <p className="mt-4 text-sm leading-7 text-muted-foreground">
             {tAbout("supportContactDescription")}
           </p>

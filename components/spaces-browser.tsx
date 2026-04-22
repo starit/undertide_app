@@ -127,13 +127,14 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {categoryOptions.map((option) => (
           <Button
             key={option}
             variant={category === option ? "default" : "outline"}
             size="sm"
             onClick={() => setCategory(option)}
+            className="shrink-0"
           >
             {option}
           </Button>

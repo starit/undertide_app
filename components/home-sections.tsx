@@ -27,10 +27,10 @@ export async function QuickEntrySection() {
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {entries.map((entry) => (
           <Card key={entry.title}>
-            <CardHeader className="p-5">
+            <CardHeader className="p-4 md:p-5">
               <CardTitle className="text-xl">{entry.title}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4 p-5 pt-0">
+            <CardContent className="flex flex-col gap-4 p-4 pt-0 md:p-5 md:pt-0">
               <p className="text-sm leading-6 text-muted-foreground">{entry.description}</p>
               <Link href={entry.href} className="inline-flex items-center gap-2 text-sm font-medium">
                 {tHome("open")} {entry.title} <ChevronRight className="size-4" />
@@ -79,7 +79,7 @@ export function ProposalBrowseSection({ proposals }: { proposals: Proposal[] }) 
           </Link>
         </Button>
       </div>
-      <div className="mt-10 grid gap-6 md:grid-cols-2">
+      <div className="mt-8 grid gap-6 md:mt-10 md:grid-cols-2">
         {proposals.slice(3).map((proposal) => (
           <ProposalCard key={proposal.id} proposal={proposal} compact />
         ))}
@@ -117,10 +117,10 @@ export async function MethodologySection() {
   const tHome = await getTranslations("home");
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
-      <div className="grid gap-6 border border-border bg-card p-6 md:grid-cols-[0.9fr_1.1fr] md:p-8">
+      <div className="grid gap-6 border border-border bg-card p-5 md:grid-cols-[0.9fr_1.1fr] md:p-8">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{tHome("methodologyEyebrow")}</span>
-          <h2 className="font-serif text-3xl leading-tight">{tHome("methodologyTitle")}</h2>
+          <h2 className="font-serif text-2xl leading-tight md:text-3xl">{tHome("methodologyTitle")}</h2>
         </div>
         <div className="grid gap-4 text-sm leading-6 text-muted-foreground">
           <p>{tHome("methodologyDescriptionOne")}</p>

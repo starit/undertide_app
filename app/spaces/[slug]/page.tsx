@@ -41,23 +41,23 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
   if (!space) notFound();
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
+    <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
       <div className="grid gap-8 lg:grid-cols-[1fr_0.8fr]">
-        <div className="border border-border bg-card p-8 shadow-panel">
-          <div className="flex items-center gap-4">
-            <Avatar className="size-14">
+        <div className="border border-border bg-card p-5 shadow-panel md:p-8">
+          <div className="flex items-start gap-4">
+            <Avatar className="size-12 shrink-0 md:size-14">
               {space.avatar ? <AvatarImage src={space.avatar} alt={space.name} /> : null}
               <AvatarFallback>{space.name.slice(0, 2)}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <h1 className="font-serif text-5xl leading-tight">{space.name}</h1>
-                {space.verified ? <BadgeCheck className="size-5 text-[#2563eb]" /> : null}
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                <h1 className="text-balance font-serif text-3xl leading-tight md:text-5xl">{space.name}</h1>
+                {space.verified ? <BadgeCheck className="size-5 shrink-0 text-[#2563eb]" /> : null}
               </div>
-              <p className="mt-2 font-mono text-xs uppercase tracking-[0.24em] text-muted-foreground">{space.slug}</p>
+              <p className="mt-2 break-all font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground md:text-xs md:tracking-[0.24em]">{space.slug}</p>
             </div>
           </div>
-          <p className="mt-4 max-w-3xl text-lg leading-8 text-muted-foreground">{space.summary}</p>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground md:text-lg md:leading-8">{space.summary}</p>
           <div className="mt-6 flex flex-wrap gap-2">
             {space.categories.map((category) => (
               <Badge key={category} variant="muted">
@@ -107,7 +107,7 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
       <div className="mt-12">
         <div className="mb-8 flex flex-col gap-3">
           <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{tSpaces("proposalListEyebrow")}</span>
-          <h2 className="font-serif text-4xl">{tSpaces("proposalListTitle")}</h2>
+          <h2 className="font-serif text-3xl md:text-4xl">{tSpaces("proposalListTitle")}</h2>
         </div>
         <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} />
       </div>
