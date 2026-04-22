@@ -1,32 +1,34 @@
 import Link from "next/link";
 import { Compass, Languages, Search, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Locale, getDictionary } from "@/lib/i18n";
 
-const stats = [
-  { label: "Tracked Spaces", value: "120+" },
-  { label: "Proposal Signals", value: "4.8k" },
-  { label: "Readable Briefs", value: "Multi-lang" },
-];
+export function Hero({ locale }: { locale: Locale }) {
+  const copy = getDictionary(locale);
+  const stats = [
+    { label: copy.home.trackedSpaces, value: "120+" },
+    { label: copy.home.proposalSignals, value: "4.8k" },
+    { label: copy.home.readableBriefs, value: copy.home.multiLang },
+  ];
 
-const points = [
-  {
-    title: "Cross-protocol monitoring",
-    description: "Track major DAO spaces without hopping between forums and voting pages.",
-    icon: Compass,
-  },
-  {
-    title: "Readable proposal intelligence",
-    description: "Turn governance text into summaries, facts, and decision context.",
-    icon: Languages,
-  },
-  {
-    title: "Risk-aware scanning",
-    description: "Surface treasury, execution, and strategic proposals that deserve attention.",
-    icon: ShieldCheck,
-  },
-];
+  const points = [
+    {
+      title: copy.home.crossProtocolMonitoring,
+      description: copy.home.crossProtocolMonitoringDescription,
+      icon: Compass,
+    },
+    {
+      title: copy.home.readableProposalIntelligence,
+      description: copy.home.readableProposalIntelligenceDescription,
+      icon: Languages,
+    },
+    {
+      title: copy.home.riskAwareScanning,
+      description: copy.home.riskAwareScanningDescription,
+      icon: ShieldCheck,
+    },
+  ];
 
-export function Hero() {
   return (
     <section className="border-b border-border">
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 md:grid-cols-[1.25fr_0.75fr] md:px-8 md:py-8">
@@ -34,24 +36,24 @@ export function Hero() {
           <div className="absolute inset-0 bg-grid bg-[size:28px_28px] opacity-30" />
           <div className="relative flex flex-col gap-6">
             <div className="flex flex-col gap-3">
-              <span className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Governance Radar for Serious Operators</span>
+              <span className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">{copy.home.heroEyebrow}</span>
               <h1 className="max-w-4xl font-serif text-4xl leading-[1.02] md:text-6xl">
-                UnderTide reads the hidden current beneath Web3 governance.
+                {copy.home.heroTitle}
               </h1>
               <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                Aggregate DAO proposals, governance spaces, and AI-assisted context into one product-grade workflow for scanning, understanding, and participating.
+                {copy.home.heroDescription}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
-                <Link href="/proposals">Browse Proposals</Link>
+                <Link href="/proposals">{copy.home.browseProposals}</Link>
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/spaces">Explore Spaces</Link>
+                <Link href="/spaces">{copy.home.exploreSpaces}</Link>
               </Button>
               <Button variant="ghost" asChild>
                 <Link href="/search" className="inline-flex items-center gap-2">
-                  Search Everything <Search className="size-4" />
+                  {copy.home.searchEverything} <Search className="size-4" />
                 </Link>
               </Button>
             </div>

@@ -3,8 +3,11 @@ import { ArrowUpRight, Clock3 } from "lucide-react";
 import { Proposal } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Locale, getDictionary } from "@/lib/i18n";
 
-export function ProposalCard({ proposal, compact = false }: { proposal: Proposal; compact?: boolean }) {
+export function ProposalCard({ proposal, compact = false, locale = "en" }: { proposal: Proposal; compact?: boolean; locale?: Locale }) {
+  const copy = getDictionary(locale);
+
   return (
     <Card className="h-full">
       <CardHeader className={compact ? "p-5" : undefined}>
@@ -20,10 +23,10 @@ export function ProposalCard({ proposal, compact = false }: { proposal: Proposal
       <CardFooter className="flex items-center justify-between border-t border-border pt-4">
         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-muted-foreground">
           <Clock3 className="size-4" />
-          <span>Heat {proposal.heat}</span>
+          <span>{copy.proposals.heat} {proposal.heat}</span>
         </div>
         <Link href={`/proposals/${proposal.id}`} className="inline-flex items-center gap-2 text-sm font-medium">
-          Open <ArrowUpRight className="size-4" />
+          {copy.home.open} <ArrowUpRight className="size-4" />
         </Link>
       </CardFooter>
     </Card>

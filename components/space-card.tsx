@@ -4,9 +4,11 @@ import { Space } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Locale, getDictionary } from "@/lib/i18n";
 
-export function SpaceCard({ space }: { space: Space }) {
+export function SpaceCard({ space, locale = "en" }: { space: Space; locale?: Locale }) {
   const href = `/spaces/${space.slug}`;
+  const copy = getDictionary(locale);
 
   return (
     <Card className="h-full">
@@ -39,16 +41,16 @@ export function SpaceCard({ space }: { space: Space }) {
       <CardFooter className="flex items-center justify-between border-t border-border pt-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Followers</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{copy.spaces.followersLabel}</p>
             <p className="mt-1 font-semibold">{space.followers.toLocaleString()}</p>
           </div>
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Proposals</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{copy.spaces.proposalsLabel}</p>
             <p className="mt-1 font-semibold">{space.proposals}</p>
           </div>
         </div>
         <Link href={href} className="inline-flex items-center gap-2 text-sm font-medium">
-          Profile <ArrowUpRight className="size-4" />
+          {copy.spaces.profile} <ArrowUpRight className="size-4" />
         </Link>
       </CardFooter>
     </Card>

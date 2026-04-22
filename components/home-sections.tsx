@@ -6,20 +6,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProposalCard } from "@/components/proposal-card";
 import { SectionHeading } from "@/components/section-heading";
 import { SpaceCard } from "@/components/space-card";
+import { Locale, getDictionary } from "@/lib/i18n";
 
-export function QuickEntrySection() {
+export function QuickEntrySection({ locale }: { locale: Locale }) {
+  const copy = getDictionary(locale);
   const entries = [
-    { title: "Spaces", description: "Protocol governance hubs, activity signals, and discovery.", href: "/spaces" },
-    { title: "Proposals", description: "Search and sort active, upcoming, and executed governance proposals.", href: "/proposals" },
-    { title: "Search", description: "Unified discovery across protocol spaces and proposal archives.", href: "/search" },
+    { title: copy.nav.spaces, description: copy.home.spacesEntryDescription, href: "/spaces" },
+    { title: copy.nav.proposals, description: copy.home.proposalsEntryDescription, href: "/proposals" },
+    { title: copy.nav.search, description: copy.home.searchEntryDescription, href: "/search" },
   ];
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
       <SectionHeading
-        eyebrow="Quick Entry"
-        title="Start from the layer you need."
-        description="Protocol-first, proposal-first, or direct search."
+        eyebrow={copy.home.quickEntryEyebrow}
+        title={copy.home.quickEntryTitle}
+        description={copy.home.quickEntryDescription}
       />
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {entries.map((entry) => (
@@ -30,7 +32,7 @@ export function QuickEntrySection() {
             <CardContent className="flex flex-col gap-4 p-5 pt-0">
               <p className="text-sm leading-6 text-muted-foreground">{entry.description}</p>
               <Link href={entry.href} className="inline-flex items-center gap-2 text-sm font-medium">
-                Open {entry.title} <ChevronRight className="size-4" />
+                {copy.home.open} {entry.title} <ChevronRight className="size-4" />
               </Link>
             </CardContent>
           </Card>
@@ -40,19 +42,20 @@ export function QuickEntrySection() {
   );
 }
 
-export function FeaturedProposalSection({ proposals }: { proposals: Proposal[] }) {
+export function FeaturedProposalSection({ proposals, locale }: { proposals: Proposal[]; locale: Locale }) {
+  const copy = getDictionary(locale);
   const featured = proposals.slice(0, 2);
   return (
     <section className="border-y border-border bg-card/60">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
         <SectionHeading
-          eyebrow="Featured Proposals"
-          title="What likely matters this week."
-          description="The highest-signal governance items at a glance."
+          eyebrow={copy.home.featuredProposalsEyebrow}
+          title={copy.home.featuredProposalsTitle}
+          description={copy.home.featuredProposalsDescription}
         />
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {featured.map((proposal) => (
-            <ProposalCard key={proposal.id} proposal={proposal} compact />
+            <ProposalCard key={proposal.id} proposal={proposal} compact locale={locale} />
           ))}
         </div>
       </div>
@@ -84,23 +87,24 @@ export function ProposalBrowseSection({ proposals }: { proposals: Proposal[] }) 
   );
 }
 
-export function FeaturedSpacesSection({ spaces }: { spaces: Space[] }) {
+export function FeaturedSpacesSection({ spaces, locale }: { spaces: Space[]; locale: Locale }) {
+  const copy = getDictionary(locale);
   return (
     <section className="border-y border-border bg-card/60">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <SectionHeading
-            eyebrow="Featured Spaces"
-            title="Protocol governance hubs worth following."
-            description="Verified governance spaces with useful scale and activity context."
+            eyebrow={copy.home.featuredSpacesEyebrow}
+            title={copy.home.featuredSpacesTitle}
+            description={copy.home.featuredSpacesDescription}
           />
           <Button variant="outline" asChild>
-            <Link href="/spaces">All Spaces</Link>
+            <Link href="/spaces">{copy.home.allSpaces}</Link>
           </Button>
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           {spaces.slice(0, 3).map((space) => (
-            <SpaceCard key={space.slug} space={space} />
+            <SpaceCard key={space.slug} space={space} locale={locale} />
           ))}
         </div>
       </div>
@@ -108,17 +112,18 @@ export function FeaturedSpacesSection({ spaces }: { spaces: Space[] }) {
   );
 }
 
-export function MethodologySection() {
+export function MethodologySection({ locale }: { locale: Locale }) {
+  const copy = getDictionary(locale);
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
       <div className="grid gap-6 border border-border bg-card p-6 md:grid-cols-[0.9fr_1.1fr] md:p-8">
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">Trust + Methodology</span>
-          <h2 className="font-serif text-3xl leading-tight">Structured aggregation, not opaque opinion.</h2>
+          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{copy.home.methodologyEyebrow}</span>
+          <h2 className="font-serif text-3xl leading-tight">{copy.home.methodologyTitle}</h2>
         </div>
         <div className="grid gap-4 text-sm leading-6 text-muted-foreground">
-          <p>UnderTide aggregates proposals and governance space metadata, then adds readable AI summaries and structured tags to improve scanning efficiency.</p>
-          <p>Risk and importance labels are interpretive cues, not investment advice. Original proposal pages and discussion links remain first-class sources throughout the product.</p>
+          <p>{copy.home.methodologyDescriptionOne}</p>
+          <p>{copy.home.methodologyDescriptionTwo}</p>
         </div>
       </div>
     </section>

@@ -8,12 +8,14 @@ import { setSpaceView } from "@/store/ui-slice";
 import { SpaceCard } from "@/components/space-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatMessage, Locale, getDictionary } from "@/lib/i18n";
 
 const categoryOptions = ["All", "Layer 2", "Treasury", "Risk", "Protocol", "DEX", "Identity", "Public Goods"] as const;
 
-export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
+export function SpacesBrowser({ spaces, locale }: { spaces: Space[]; locale: Locale }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
+  const copy = getDictionary(locale);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof categoryOptions)[number]>("All");
   const [verifiedOnly, setVerifiedOnly] = useState(true);
@@ -87,23 +89,26 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search protocols, categories, ecosystem themes..."
+            placeholder={copy.spaces.searchPlaceholder}
             className="pl-10"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {["Activity", "Followers"].map((option) => (
+          {[
+            { value: "Activity", label: copy.spaces.activity },
+            { value: "Followers", label: copy.spaces.followers },
+          ].map((option) => (
             <Button
-              key={option}
-              variant={sort === option ? "secondary" : "ghost"}
+              key={option.value}
+              variant={sort === option.value ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setSort(option as "Activity" | "Followers")}
+              onClick={() => setSort(option.value as "Activity" | "Followers")}
             >
-              {option}
+              {option.label}
             </Button>
           ))}
           <Button variant={verifiedOnly ? "default" : "outline"} size="sm" onClick={() => setVerifiedOnly((value) => !value)}>
-            Verified
+            {copy.spaces.verified}
           </Button>
           <Button
             variant={view === "list" ? "secondary" : "ghost"}
@@ -137,13 +142,13 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
-          {isLoading ? "Searching spaces from the database..." : `${results.length} spaces loaded from the backend`}
+          {isLoading ? copy.spaces.searching : formatMessage(copy.spaces.loaded, { count: results.length })}
         </span>
       </div>
 
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
         {results.map((space) => (
-          <SpaceCard key={space.slug} space={space} />
+          <SpaceCard key={space.slug} space={space} locale={locale} />
         ))}
       </div>
     </div>

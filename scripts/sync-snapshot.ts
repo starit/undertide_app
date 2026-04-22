@@ -83,6 +83,7 @@ async function syncSpaces() {
   const previousState = options.full ? null : await getSyncState("spaces");
   let skip = options.full ? 0 : options.spacesSkip ?? parseCursorSkip(previousState?.lastCursor);
   let upserted = 0;
+  let memberSyncWarnings = 0;
 
   while (true) {
     const batch = await fetchGraphQL<{ spaces: SnapshotSpace[] }>(
@@ -138,7 +139,10 @@ async function syncSpaces() {
 
     for (const space of spaces) {
       await upsertSpace(space);
-      await replaceSpaceMembers(space.id, space.members ?? []);
+      const membersSynced = await syncSpaceMembersSafely(space.id, space.members ?? []);
+      if (!membersSynced) {
+        memberSyncWarnings += 1;
+      }
       upserted += 1;
     }
 
@@ -154,6 +158,10 @@ async function syncSpaces() {
   await safelyUpsertSyncState("spaces", {
     last_cursor: null,
   });
+
+  if (memberSyncWarnings > 0) {
+    console.warn(`[spaces] completed with ${memberSyncWarnings} member-sync warnings`);
+  }
 
   return upserted;
 }
@@ -429,13 +437,23 @@ async function refreshSpaceProposalCounts(spaceIds: string[]) {
 }
 
 async function replaceSpaceMembers(spaceId: string, members: string[]) {
-  await withDatabaseRetry(`replaceSpaceMembers.delete(${spaceId})`, async () => {
-    await db.delete(snapshotSpaceMembers).where(eq(snapshotSpaceMembers.spaceId, spaceId));
-  });
-
-  if (!Array.isArray(members) || members.length === 0) return;
-
   const sanitizedMembers = sanitizeValue(members).filter((member): member is string => typeof member === "string" && member.length > 0);
+  let performedFullReplace = false;
+
+  try {
+    await withDatabaseRetry(`replaceSpaceMembers.delete(${spaceId})`, async () => {
+      await db.delete(snapshotSpaceMembers).where(eq(snapshotSpaceMembers.spaceId, spaceId));
+    });
+    performedFullReplace = true;
+  } catch (error) {
+    console.warn(
+      `[spaces] failed to clear existing members for ${spaceId}; falling back to insert-only sync: ${stringifyError(error)}`
+    );
+  }
+
+  if (sanitizedMembers.length === 0) {
+    return performedFullReplace;
+  }
 
   const chunkSize = 500;
   for (let index = 0; index < sanitizedMembers.length; index += chunkSize) {
@@ -456,6 +474,17 @@ async function replaceSpaceMembers(spaceId: string, members: string[]) {
           },
         });
     });
+  }
+
+  return performedFullReplace;
+}
+
+async function syncSpaceMembersSafely(spaceId: string, members: string[]) {
+  try {
+    return await replaceSpaceMembers(spaceId, members);
+  } catch (error) {
+    console.warn(`[spaces] member sync failed for ${spaceId}: ${stringifyError(error)}`);
+    return false;
   }
 }
 

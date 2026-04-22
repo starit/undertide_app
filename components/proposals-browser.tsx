@@ -8,13 +8,23 @@ import { setProposalView } from "@/store/ui-slice";
 import { ProposalCard } from "@/components/proposal-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Locale, getDictionary } from "@/lib/i18n";
 
 const statusOptions: Array<ProposalStatus | "All"> = ["All", "Active", "Upcoming", "Closed", "Executed"];
 const sortOptions = ["Time", "Heat"] as const;
 
-export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: Proposal[]; initialSpaceSlug?: string }) {
+export function ProposalsBrowser({
+  proposals,
+  initialSpaceSlug,
+  locale,
+}: {
+  proposals: Proposal[];
+  initialSpaceSlug?: string;
+  locale: Locale;
+}) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.proposalView);
+  const copy = getDictionary(locale);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("All");
   const [sort, setSort] = useState<(typeof sortOptions)[number]>("Time");
@@ -43,11 +53,11 @@ export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: P
     <div className="flex flex-col gap-8">
       <div className="grid gap-4 border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:p-5">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search proposals, protocols, risk themes..."
+            placeholder={copy.proposals.searchPlaceholder}
             className="pl-10"
           />
         </div>
@@ -59,7 +69,7 @@ export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: P
               size="sm"
               onClick={() => setStatus(option)}
             >
-              {option}
+              {statusLabel(option, copy)}
             </Button>
           ))}
         </div>
@@ -71,7 +81,7 @@ export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: P
               size="sm"
               onClick={() => setSort(option)}
             >
-              {option}
+              {option === "Time" ? copy.proposals.time : copy.proposals.heat}
             </Button>
           ))}
           <Button
@@ -93,17 +103,32 @@ export function ProposalsBrowser({ proposals, initialSpaceSlug }: { proposals: P
 
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
         {visible.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} />
+          <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} locale={locale} />
         ))}
       </div>
 
       {visible.length < filtered.length ? (
         <div>
           <Button variant="outline" onClick={() => setVisibleCount((count) => count + 4)}>
-            Load More
+            {copy.proposals.loadMore}
           </Button>
         </div>
       ) : null}
     </div>
   );
+}
+
+function statusLabel(status: ProposalStatus | "All", copy: ReturnType<typeof getDictionary>) {
+  switch (status) {
+    case "Active":
+      return copy.proposals.active;
+    case "Upcoming":
+      return copy.proposals.upcoming;
+    case "Closed":
+      return copy.proposals.closed;
+    case "Executed":
+      return copy.proposals.executed;
+    default:
+      return copy.proposals.all;
+  }
 }

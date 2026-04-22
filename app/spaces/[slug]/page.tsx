@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { getSpaceBySlug, listSpaceProposals } from "@/lib/repository";
@@ -6,8 +7,36 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getDictionary } from "@/lib/i18n";
+import { getServerLocale } from "@/lib/i18n-server";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const space = await getSpaceBySlug(slug);
+
+  if (!space) {
+    return {
+      title: "Space Not Found",
+    };
+  }
+
+  return {
+    title: `${space.name} Governance Space`,
+    description: space.summary,
+    alternates: {
+      canonical: `/spaces/${space.slug}`,
+    },
+    openGraph: {
+      title: `${space.name} Governance Space | UnderTide`,
+      description: space.summary,
+      url: `https://undertide.xyz/spaces/${space.slug}`,
+    },
+  };
+}
 
 export default async function SpaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const locale = await getServerLocale();
+  const copy = getDictionary(locale);
   const { slug } = await params;
   const [space, proposals] = await Promise.all([getSpaceBySlug(slug), listSpaceProposals(slug, { sort: "time" })]);
 
@@ -42,35 +71,35 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
 
         <Card>
           <CardHeader>
-            <CardTitle>Governance Profile</CardTitle>
+            <CardTitle>{copy.spaces.governanceProfile}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Followers</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.followersLabel}</p>
                 <p className="mt-2 text-xl font-semibold">{space.followers.toLocaleString()}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Activity</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.activity}</p>
                 <p className="mt-2 text-xl font-semibold">{space.activityScore} / 100</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Proposals</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.proposalsLabel}</p>
                 <p className="mt-2 text-xl font-semibold">{space.proposals}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Verification</p>
-                <p className="mt-2 text-xl font-semibold">{space.verified ? "Verified" : "Unverified"}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{copy.spaces.verification}</p>
+                <p className="mt-2 text-xl font-semibold">{space.verified ? copy.spaces.verifiedStatus : copy.spaces.unverifiedStatus}</p>
               </div>
             </div>
             <Button variant="outline" asChild>
               <a href={space.website} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                Official Site <ArrowUpRight className="size-4" />
+                {copy.spaces.officialSite} <ArrowUpRight className="size-4" />
               </a>
             </Button>
             <Button variant="outline" asChild>
               <a href={space.forum} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between">
-                Governance Forum <ArrowUpRight className="size-4" />
+                {copy.spaces.governanceForum} <ArrowUpRight className="size-4" />
               </a>
             </Button>
           </CardContent>
@@ -79,10 +108,10 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
 
       <div className="mt-12">
         <div className="mb-8 flex flex-col gap-3">
-          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">Proposal List</span>
-          <h2 className="font-serif text-4xl">Proposals in this space</h2>
+          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{copy.spaces.proposalListEyebrow}</span>
+          <h2 className="font-serif text-4xl">{copy.spaces.proposalListTitle}</h2>
         </div>
-        <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} />
+        <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} locale={locale} />
       </div>
     </section>
   );
