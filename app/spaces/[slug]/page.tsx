@@ -52,7 +52,7 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 <h1 className="text-balance font-serif text-3xl leading-tight md:text-5xl">{space.name}</h1>
-                {space.verified ? <BadgeCheck className="size-5 shrink-0 text-[#2563eb]" /> : null}
+                {space.verified ? <BadgeCheck className="size-5 shrink-0 text-info" /> : null}
               </div>
               <p className="mt-2 break-all font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground md:text-xs md:tracking-[0.24em]">{space.slug}</p>
             </div>
@@ -104,10 +104,12 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
         </Card>
       </div>
 
-      <div className="mt-12">
-        <div className="mb-8 flex flex-col gap-3">
-          <span className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">{tSpaces("proposalListEyebrow")}</span>
-          <h2 className="font-serif text-3xl md:text-4xl">{tSpaces("proposalListTitle")}</h2>
+      <div className="mt-10 md:mt-12">
+        <div className="mb-6 flex flex-col gap-2 md:mb-8 md:gap-3">
+          <span className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground md:text-xs md:tracking-[0.28em]">
+            {tSpaces("proposalListEyebrow")}
+          </span>
+          <h2 className="font-serif text-[1.7rem] md:text-4xl">{tSpaces("proposalListTitle")}</h2>
         </div>
         <ProposalsBrowser proposals={proposals} initialSpaceSlug={space.slug} />
       </div>

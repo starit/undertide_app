@@ -32,7 +32,7 @@ export function SiteHeaderClient({
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:gap-4 md:px-8 md:py-4">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="flex min-w-0 items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center border border-border bg-[#1d3a32] text-[#f4efe6] md:size-11">
+            <div className="flex size-10 shrink-0 items-center justify-center border border-border bg-brand text-brand-foreground md:size-11">
               <Waves className="size-5" />
             </div>
             <div className="flex min-w-0 flex-col">

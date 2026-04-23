@@ -75,7 +75,7 @@ export async function Hero({ stats }: HeroProps) {
         <div className="grid gap-px border border-border bg-border">
           {points.map((point) => (
             <div key={point.title} className="flex gap-3 bg-background p-4 md:p-5">
-              <point.icon className="mt-0.5 size-5 shrink-0 text-[#1d3a32]" />
+              <point.icon className="mt-0.5 size-5 shrink-0 text-brand" />
               <div className="flex flex-col gap-1.5">
                 <h2 className="font-serif text-lg md:text-xl">{point.title}</h2>
                 <p className="text-sm leading-6 text-muted-foreground">{point.description}</p>

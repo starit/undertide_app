@@ -95,8 +95,8 @@ export function ProposalsBrowser({
   }, [deferredQuery, initialSpaceSlug, limit, sort, status]);
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="grid gap-4 border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:p-5">
+    <div className="flex flex-col gap-6 md:gap-8">
+      <div className="grid gap-3 border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:gap-4 md:p-5">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -119,31 +119,37 @@ export function ProposalsBrowser({
             </Button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {sortOptions.map((option) => (
+        <div className="flex flex-wrap items-center justify-between gap-2 md:justify-start">
+          <div className="flex flex-wrap items-center gap-2">
+            {sortOptions.map((option) => (
+              <Button
+                key={option}
+                variant={sort === option ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setSort(option)}
+              >
+                {option === "Time" ? tProposals("time") : tProposals("heat")}
+              </Button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-2 md:ml-0">
             <Button
-              key={option}
-              variant={sort === option ? "secondary" : "ghost"}
+              variant={view === "list" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setSort(option)}
+              onClick={() => dispatch(setProposalView("list"))}
+              aria-label="List view"
             >
-              {option === "Time" ? tProposals("time") : tProposals("heat")}
+              <List className="size-4" />
             </Button>
-          ))}
-          <Button
-            variant={view === "list" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => dispatch(setProposalView("list"))}
-          >
-            <List className="size-4" />
-          </Button>
-          <Button
-            variant={view === "grid" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => dispatch(setProposalView("grid"))}
-          >
-            <LayoutGrid className="size-4" />
-          </Button>
+            <Button
+              variant={view === "grid" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => dispatch(setProposalView("grid"))}
+              aria-label="Grid view"
+            >
+              <LayoutGrid className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -153,7 +159,7 @@ export function ProposalsBrowser({
         </span>
       </div>
 
-      <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
+      <div className={view === "grid" ? "grid gap-4 md:gap-6 lg:grid-cols-2" : "grid gap-4 md:gap-6"}>
         {results.map((proposal) => (
           <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} />
         ))}

@@ -8,6 +8,7 @@
   --card: 40 35% 95%;
   --card-foreground: 206 34% 9%;
   --primary: 165 33% 17%;
+  --primary-hover: 165 35% 20%;
   --primary-foreground: 42 33% 93%;
   --secondary: 39 31% 74%;
   --secondary-foreground: 206 34% 9%;
@@ -18,6 +19,13 @@
   --border: 37 21% 72%;
   --input: 37 21% 72%;
   --ring: 165 33% 17%;
+  --brand: 165 33% 17%;
+  --brand-foreground: 42 33% 93%;
+  --brand-muted: 39 31% 82%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 100%;
+  --warning: 24 77% 34%;
+  --warning-foreground: 42 33% 93%;
 }
 
 * {
@@ -127,7 +135,7 @@ a {
 }
 
 .proposal-markdown .proposal-task-checkbox {
-  @apply mt-1 size-4 shrink-0 rounded border-border accent-[hsl(var(--primary))];
+  @apply mt-1 size-4 shrink-0 rounded border-border accent-brand;
 }
 
 .proposal-markdown blockquote {

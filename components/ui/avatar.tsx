@@ -12,7 +12,7 @@ function AvatarImage({ className, ...props }: React.ComponentProps<typeof Avatar
 function AvatarFallback({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
   return (
     <AvatarPrimitive.Fallback
-      className={cn("flex size-full items-center justify-center bg-[#d6c3a1] font-mono text-xs uppercase text-foreground", className)}
+      className={cn("flex size-full items-center justify-center bg-brand-muted font-mono text-xs uppercase text-foreground", className)}
       {...props}
     />
   );

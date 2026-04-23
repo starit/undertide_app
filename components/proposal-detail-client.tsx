@@ -129,7 +129,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 {activeLocale.toUpperCase()}
               </Badge>
             </div>
-            <h1 className="mt-5 max-w-4xl text-balance font-serif text-3xl leading-tight md:text-[2.75rem]">{proposal.title}</h1>
+            <h1 className="mt-5 max-w-4xl text-balance font-serif text-[1.75rem] leading-tight md:text-[2.5rem]">{proposal.title}</h1>
             {proposal.labels.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {proposal.labels.map((label) => (

@@ -27,7 +27,7 @@ export function SpaceCard({ space }: { space: Space }) {
               <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{space.tagline}</p>
             </div>
           </Link>
-          {space.verified ? <BadgeCheck className="mt-0.5 size-5 shrink-0 text-[#2563eb]" /> : null}
+          {space.verified ? <BadgeCheck className="mt-0.5 size-5 shrink-0 text-info" /> : null}
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
