@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Proposal, Space } from "@/lib/types";
 import { ProposalCard } from "@/components/proposal-card";
 import { SectionHeading } from "@/components/section-heading";
@@ -12,6 +12,7 @@ const DEFAULT_SEARCH_LIMIT = 6;
 const LOAD_MORE_STEP = 4;
 
 export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; spaces: Space[] }) {
+  const locale = useLocale();
   const tSearch = useTranslations("search");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(DEFAULT_SEARCH_LIMIT);
@@ -34,6 +35,10 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
       verified: "true",
       sort: "activity",
     });
+
+    if (locale && locale !== "en") {
+      searchParams.set("locale", locale);
+    }
 
     if (deferredQuery.trim()) {
       searchParams.set("q", deferredQuery.trim());
@@ -84,7 +89,7 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
     void loadResults();
 
     return () => controller.abort();
-  }, [deferredQuery, limit]);
+  }, [deferredQuery, limit, locale]);
 
   return (
     <div className="flex flex-col gap-12">

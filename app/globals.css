@@ -138,8 +138,28 @@ a {
   @apply mt-1 size-4 shrink-0 rounded border-border accent-brand;
 }
 
-.proposal-markdown blockquote {
-  @apply border-l-2 border-border pl-4 italic;
+.proposal-markdown .proposal-quote {
+  @apply my-6 border-l-4 border-accent/70 bg-muted/50 px-4 py-3 text-muted-foreground md:px-5 md:py-4;
+}
+
+.proposal-markdown .proposal-quote > *:first-child {
+  @apply mt-0;
+}
+
+.proposal-markdown .proposal-quote > * + * {
+  @apply mt-3;
+}
+
+.proposal-markdown .proposal-quote p {
+  @apply text-muted-foreground;
+}
+
+.proposal-markdown .proposal-quote .proposal-list {
+  @apply my-3;
+}
+
+.proposal-markdown .proposal-quote code {
+  @apply bg-background/70;
 }
 
 .proposal-markdown code {
@@ -156,6 +176,10 @@ a {
 
 .proposal-markdown a {
   @apply text-accent underline underline-offset-4;
+}
+
+.proposal-markdown img {
+  @apply h-auto max-w-full rounded-md border border-border;
 }
 
 .proposal-markdown hr {

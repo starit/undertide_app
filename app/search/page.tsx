@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { listProposals, listSpaces } from "@/lib/repository";
+import { getServerLocale } from "@/lib/i18n-server";
 import { SearchResults } from "@/components/search-results";
 import { SectionHeading } from "@/components/section-heading";
 
@@ -16,8 +17,9 @@ export const metadata: Metadata = {
 
 export default async function SearchPage() {
   const tSearch = await getTranslations("search");
+  const locale = await getServerLocale();
   const [proposals, spaces] = await Promise.all([
-    listProposals({ sort: "time", limit: INITIAL_SEARCH_LIMIT }),
+    listProposals({ sort: "time", limit: INITIAL_SEARCH_LIMIT, locale }),
     listSpaces({ sort: "activity", verified: true, limit: INITIAL_SEARCH_LIMIT }),
   ]);
 

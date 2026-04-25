@@ -16,6 +16,7 @@ type ProposalFilters = {
   sort?: "time" | "heat";
   spaceSlug?: string;
   limit?: number;
+  locale?: string;
 };
 
 type SpaceFilters = {
@@ -56,6 +57,30 @@ type SlimSpaceRecord = Pick<
 type ProposalRecord = {
   proposal: typeof snapshotProposals.$inferSelect;
   space: typeof snapshotSpaces.$inferSelect;
+  translation: typeof proposalTranslations.$inferSelect | null;
+};
+
+type SlimProposalRecord = {
+  proposal: Pick<
+    typeof snapshotProposals.$inferSelect,
+    | "id"
+    | "spaceId"
+    | "title"
+    | "author"
+    | "createdTs"
+    | "endTs"
+    | "type"
+    | "labels"
+    | "quorum"
+    | "quorumType"
+    | "app"
+    | "discussion"
+    | "scoresTotal"
+    | "votesCount"
+    | "state"
+  >;
+  space: Pick<typeof snapshotSpaces.$inferSelect, "id" | "name" | "avatar" | "memberCount">;
+  translation: Pick<typeof proposalTranslations.$inferSelect, "title" | "summary"> | null;
 };
 
 type ProposalTranslationRecord = typeof proposalTranslations.$inferSelect;
@@ -76,14 +101,14 @@ export async function listProposals(query: ProposalFilters = {}): Promise<Propos
   const records = await fetchProposals(query);
   // time sort + limit are fully handled in SQL; skip in-memory pass
   if ((!query.sort || query.sort === "time") && query.limit) {
-    return records.map(mapProposal);
+    return records.map((record) => mapProposal(record, { includeBody: false }));
   }
-  return applyProposalFilters(records.map(mapProposal), query);
+  return applyProposalFilters(records.map((record) => mapProposal(record, { includeBody: false })), query);
 }
 
-export async function getProposalById(id: string): Promise<Proposal | null> {
-  const record = await fetchProposalById(id);
-  return record ? mapProposal(record) : null;
+export async function getProposalById(id: string, locale?: string): Promise<Proposal | null> {
+  const record = await fetchProposalById(id, locale);
+  return record ? mapProposal(record, { includeBody: true }) : null;
 }
 
 export async function getProposalTranslations(proposalId: string, locales?: string[]): Promise<ProposalTranslation[]> {
@@ -103,19 +128,18 @@ export async function getProposalDetail(
   id: string,
   locale?: string
 ): Promise<(Proposal & { translation: ProposalTranslation | null }) | null> {
-  const proposal = await getProposalById(id);
+  const normalizedLocale = normalizeTranslationLocale(locale);
+  const record = await fetchProposalById(id, normalizedLocale);
+  const proposal = record ? mapProposal(record, { includeBody: true }) : null;
   if (!proposal) return null;
 
-  const translation = locale ? await getProposalTranslation(id, locale) : null;
+  const translation = record?.translation ? mapProposalTranslation(record.translation) : null;
   if (!translation) {
     return { ...proposal, translation: null };
   }
 
   return {
     ...proposal,
-    title: translation.title || proposal.title,
-    summary: translation.summary || proposal.summary,
-    body: translation.body || proposal.body,
     translation,
   };
 }
@@ -289,7 +313,7 @@ async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
   }
 }
 
-async function fetchProposals(query: ProposalFilters = {}): Promise<ProposalRecord[]> {
+async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposalRecord[]> {
   if (!hasDatabase) return [];
 
   try {
@@ -307,12 +331,81 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<ProposalReco
         : undefined,
     ];
 
-    const baseQuery = db
-      .select({ proposal: snapshotProposals, space: snapshotSpaces })
-      .from(snapshotProposals)
-      .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-      .where(and(...conditions))
-      .orderBy(desc(snapshotProposals.createdTs));
+    const normalizedLocale = normalizeTranslationLocale(query.locale);
+    const baseQuery =
+      normalizedLocale && normalizedLocale !== "en"
+        ? db
+            .select({
+              proposal: {
+                id: snapshotProposals.id,
+                spaceId: snapshotProposals.spaceId,
+                title: snapshotProposals.title,
+                author: snapshotProposals.author,
+                createdTs: snapshotProposals.createdTs,
+                endTs: snapshotProposals.endTs,
+                type: snapshotProposals.type,
+                labels: snapshotProposals.labels,
+                quorum: snapshotProposals.quorum,
+                quorumType: snapshotProposals.quorumType,
+                app: snapshotProposals.app,
+                discussion: snapshotProposals.discussion,
+                scoresTotal: snapshotProposals.scoresTotal,
+                votesCount: snapshotProposals.votesCount,
+                state: snapshotProposals.state,
+              },
+              space: {
+                id: snapshotSpaces.id,
+                name: snapshotSpaces.name,
+                avatar: snapshotSpaces.avatar,
+                memberCount: snapshotSpaces.memberCount,
+              },
+              translation: {
+                title: proposalTranslations.title,
+                summary: proposalTranslations.summary,
+              },
+            })
+            .from(snapshotProposals)
+            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+            .leftJoin(
+              proposalTranslations,
+              and(
+                eq(proposalTranslations.proposalId, snapshotProposals.id),
+                eq(proposalTranslations.locale, normalizedLocale)
+              )
+            )
+            .where(and(...conditions))
+            .orderBy(desc(snapshotProposals.createdAt))
+        : db
+            .select({
+              proposal: {
+                id: snapshotProposals.id,
+                spaceId: snapshotProposals.spaceId,
+                title: snapshotProposals.title,
+                author: snapshotProposals.author,
+                createdTs: snapshotProposals.createdTs,
+                endTs: snapshotProposals.endTs,
+                type: snapshotProposals.type,
+                labels: snapshotProposals.labels,
+                quorum: snapshotProposals.quorum,
+                quorumType: snapshotProposals.quorumType,
+                app: snapshotProposals.app,
+                discussion: snapshotProposals.discussion,
+                scoresTotal: snapshotProposals.scoresTotal,
+                votesCount: snapshotProposals.votesCount,
+                state: snapshotProposals.state,
+              },
+              space: {
+                id: snapshotSpaces.id,
+                name: snapshotSpaces.name,
+                avatar: snapshotSpaces.avatar,
+                memberCount: snapshotSpaces.memberCount,
+              },
+              translation: sql<null>`null`,
+            })
+            .from(snapshotProposals)
+            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+            .where(and(...conditions))
+            .orderBy(desc(snapshotProposals.createdAt));
 
     // push LIMIT to SQL only when sort=time (default) — heat/importance need in-memory reorder
     if ((!query.sort || query.sort === "time") && query.limit) {
@@ -325,17 +418,37 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<ProposalReco
   }
 }
 
-async function fetchProposalById(id: string): Promise<ProposalRecord | null> {
+async function fetchProposalById(id: string, locale?: string): Promise<ProposalRecord | null> {
   if (!hasDatabase) return null;
 
   try {
     const db = getDb();
-    const [record] = await db
-      .select({ proposal: snapshotProposals, space: snapshotSpaces })
-      .from(snapshotProposals)
-      .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-      .where(eq(snapshotProposals.id, id))
-      .limit(1);
+    const normalizedLocale = normalizeTranslationLocale(locale);
+    const [record] =
+      normalizedLocale && normalizedLocale !== "en"
+        ? await db
+            .select({ proposal: snapshotProposals, space: snapshotSpaces, translation: proposalTranslations })
+            .from(snapshotProposals)
+            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+            .leftJoin(
+              proposalTranslations,
+              and(
+                eq(proposalTranslations.proposalId, snapshotProposals.id),
+                eq(proposalTranslations.locale, normalizedLocale)
+              )
+            )
+            .where(eq(snapshotProposals.id, id))
+            .limit(1)
+        : await db
+            .select({
+              proposal: snapshotProposals,
+              space: snapshotSpaces,
+              translation: sql<null>`null`,
+            })
+            .from(snapshotProposals)
+            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+            .where(eq(snapshotProposals.id, id))
+            .limit(1);
     return record ?? null;
   } catch {
     return null;
@@ -508,18 +621,30 @@ function mapSpace(space: SlimSpaceRecord): Space {
   };
 }
 
-function mapProposal(record: ProposalRecord): Proposal {
+function mapProposal(
+  record: Pick<ProposalRecord, "proposal" | "space" | "translation"> | SlimProposalRecord,
+  options: { includeBody: boolean }
+): Proposal {
   const { proposal, space } = record;
-  const body = normalizeText(proposal.body) || "";
-  const summary = excerpt(body, 180) || proposal.title;
+  const translatedTitle = normalizeText(record.translation?.title);
+  const translatedSummary = normalizeText(record.translation?.summary);
+  const rawSourceBody = "body" in proposal ? proposal.body ?? "" : "";
+  const rawTranslatedBody = record.translation && "body" in record.translation ? record.translation.body ?? "" : "";
+  const normalizedSourceBody = normalizeText(rawSourceBody);
+  const normalizedTranslatedBody = normalizeText(rawTranslatedBody);
+  const summary =
+    translatedSummary || excerpt(normalizedTranslatedBody || normalizedSourceBody, 180) || translatedTitle || proposal.title;
   const proposalUrl = getSnapshotProposalUrl(space.id, proposal.id);
+  const author = proposal.author.trim() || "unknown";
 
   return {
     id: proposal.id,
-    title: proposal.title,
+    title: translatedTitle || proposal.title,
     protocol: space.name,
     spaceSlug: space.id,
     spaceAvatar: resolveIpfsUrl(space.avatar),
+    author,
+    authorProfileUrl: getSnapshotProfileUrl(author),
     status: mapProposalStatus(proposal.state),
     publishedAt: fromUnixSeconds(proposal.createdTs),
     closesAt: fromUnixSeconds(proposal.endTs),
@@ -532,7 +657,7 @@ function mapProposal(record: ProposalRecord): Proposal {
     app: proposal.app ?? null,
     discussion: proposal.discussion || null,
     summary,
-    body: proposal.body ?? null,
+    body: options.includeBody ? rawTranslatedBody || ("body" in proposal ? proposal.body || null : null) : null,
     discussionUrl: proposal.discussion || proposalUrl,
     proposalUrl,
   };
@@ -656,6 +781,15 @@ function normalizeLimit(value: number | undefined, fallback: number) {
   return Math.max(1, Math.min(2000, Math.floor(value)));
 }
 
+function normalizeTranslationLocale(value: string | null | undefined) {
+  const normalized = normalizeOptionalString(value)?.toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === "zh-cn" || normalized === "zh_hans" || normalized === "zh-hans") {
+    return "zh";
+  }
+  return normalized;
+}
+
 function excerpt(text: string, length: number) {
   if (!text) return "";
   return text.length <= length ? text : `${text.slice(0, length - 3).trimEnd()}...`;
@@ -677,6 +811,10 @@ function getSnapshotSpaceUrl(spaceId: string) {
 
 function getSnapshotProposalUrl(spaceId: string, proposalId: string) {
   return `https://snapshot.box/#/${encodeURIComponent(spaceId)}/proposal/${encodeURIComponent(proposalId)}`;
+}
+
+function getSnapshotProfileUrl(address: string) {
+  return `https://snapshot.org/#/profile/${encodeURIComponent(address)}`;
 }
 
 function applyProposalFilters(items: Proposal[], query: ProposalFilters) {

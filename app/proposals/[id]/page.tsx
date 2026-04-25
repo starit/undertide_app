@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProposalDetailClient } from "@/components/proposal-detail-client";
+import { getServerLocale } from "@/lib/i18n-server";
 import { getProposalDetail } from "@/lib/repository";
 
 export async function generateMetadata({
@@ -10,8 +11,9 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ locale?: string }>;
 }): Promise<Metadata> {
+  const serverLocale = await getServerLocale();
   const [{ id }, { locale }] = await Promise.all([params, searchParams]);
-  const proposal = await getProposalDetail(id, locale);
+  const proposal = await getProposalDetail(id, locale ?? serverLocale);
 
   if (!proposal) {
     return {
@@ -40,10 +42,11 @@ export default async function ProposalDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ locale?: string }>;
 }) {
+  const serverLocale = await getServerLocale();
   const [{ id }, { locale }] = await Promise.all([params, searchParams]);
-  const proposal = await getProposalDetail(id, locale);
+  const proposal = await getProposalDetail(id, locale ?? serverLocale);
 
   if (!proposal) notFound();
 
-  return <ProposalDetailClient proposalId={id} initialProposal={proposal} initialLocale={locale ?? "en"} />;
+  return <ProposalDetailClient proposalId={id} initialProposal={proposal} initialLocale={locale ?? serverLocale} />;
 }

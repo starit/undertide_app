@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getPlatformStats, listProposals, listSpaces } from "@/lib/repository";
+import { getServerLocale } from "@/lib/i18n-server";
 import { Hero } from "@/components/hero";
 import {
   FeaturedProposalSection,
@@ -24,9 +25,10 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
+  const locale = await getServerLocale();
   const [stats, proposals, spaces] = await Promise.all([
     getPlatformStats(),
-    listProposals({ sort: "time", limit: 2 }),
+    listProposals({ sort: "time", limit: 2, locale }),
     listSpaces({ sort: "activity", limit: 3 }),
   ]);
 

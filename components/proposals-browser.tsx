@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Proposal, ProposalStatus } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -24,6 +24,7 @@ export function ProposalsBrowser({
 }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.proposalView);
+  const locale = useLocale();
   const tProposals = useTranslations("proposals");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("All");
@@ -47,6 +48,10 @@ export function ProposalsBrowser({
       sort: sort.toLowerCase(),
       limit: String(limit),
     });
+
+    if (locale && locale !== "en") {
+      searchParams.set("locale", locale);
+    }
 
     if (deferredQuery.trim()) {
       searchParams.set("q", deferredQuery.trim());
@@ -92,7 +97,7 @@ export function ProposalsBrowser({
     void loadProposals();
 
     return () => controller.abort();
-  }, [deferredQuery, initialSpaceSlug, limit, sort, status]);
+  }, [deferredQuery, initialSpaceSlug, limit, locale, sort, status]);
 
   return (
     <div className="flex flex-col gap-6 md:gap-8">

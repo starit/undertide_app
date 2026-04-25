@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     sort: (searchParams.get("sort") as "time" | "heat" | null) ?? undefined,
     spaceSlug: searchParams.get("spaceSlug") ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+    locale: searchParams.get("locale") ?? undefined,
   });
 
   return NextResponse.json(

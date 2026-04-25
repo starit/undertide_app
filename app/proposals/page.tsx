@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { listProposals } from "@/lib/repository";
+import { getServerLocale } from "@/lib/i18n-server";
 import { ProposalsBrowser } from "@/components/proposals-browser";
 import { SectionHeading } from "@/components/section-heading";
 
@@ -16,7 +17,8 @@ export const metadata: Metadata = {
 
 export default async function ProposalsPage() {
   const tProposals = await getTranslations("proposals");
-  const proposals = await listProposals({ sort: "time", limit: INITIAL_PROPOSAL_LIMIT });
+  const locale = await getServerLocale();
+  const proposals = await listProposals({ sort: "time", limit: INITIAL_PROPOSAL_LIMIT, locale });
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">

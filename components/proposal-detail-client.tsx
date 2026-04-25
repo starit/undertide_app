@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -13,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ProposalDetail, ProposalTranslation } from "@/lib/types";
-import { formatMessage } from "@/lib/i18n";
 
 const localeOptions = [
   { value: "en", label: "English" },
@@ -21,6 +21,40 @@ const localeOptions = [
   { value: "ja", label: "日本語" },
   { value: "ko", label: "한국어" },
 ] as const;
+
+function resolveMarkdownAssetUrl(url?: string | Blob | null) {
+  if (!url || typeof url !== "string") return "";
+  if (url.startsWith("ipfs://")) {
+    return `https://cloudflare-ipfs.com/ipfs/${url.slice(7)}`;
+  }
+  return url;
+}
+
+function formatAuthorAddress(address: string) {
+  if (!address) return "";
+  if (address.length <= 14) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function getAuthorInitials(address: string) {
+  const normalized = address.startsWith("0x") ? address.slice(2) : address;
+  return (normalized.slice(0, 2) || "UT").toUpperCase();
+}
+
+function getAuthorAvatarStyle(address: string): CSSProperties {
+  let hash = 0;
+  for (let index = 0; index < address.length; index += 1) {
+    hash = (hash * 31 + address.charCodeAt(index)) >>> 0;
+  }
+
+  const hue = hash % 360;
+  const accentHue = (hue + 42) % 360;
+
+  return {
+    background: `linear-gradient(135deg, hsl(${hue} 45% 28%), hsl(${accentHue} 55% 38%))`,
+    color: "hsl(var(--background))",
+  };
+}
 
 type Props = {
   proposalId: string;
@@ -89,12 +123,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
 
   function handleLocaleChange(nextLocale: string) {
     const nextParams = new URLSearchParams(searchParams.toString());
-
-    if (nextLocale === "en") {
-      nextParams.delete("locale");
-    } else {
-      nextParams.set("locale", nextLocale);
-    }
+    nextParams.set("locale", nextLocale);
 
     const nextUrl = nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname;
     startTransition(() => {
@@ -109,8 +138,8 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
-      <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="flex flex-col gap-8">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
+        <div className="flex min-w-0 flex-col gap-8">
           <div className="border border-border bg-card p-5 shadow-panel md:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <Link
@@ -169,12 +198,43 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 </div>
               )}
             </div>
+            {(proposal.author || showReadingLocale) && (
+              <>
+                <Separator className="mt-6" />
+                <div className="mt-5 grid gap-4 md:grid-cols-2 md:items-start">
+                  {proposal.author ? (
+                    <div className="min-w-0">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                        {tProposals("author")}
+                      </p>
+                      <a
+                        href={proposal.authorProfileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group mt-2 inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <Avatar className="size-5 shrink-0">
+                          <AvatarFallback style={getAuthorAvatarStyle(proposal.author)} className="text-[9px]">
+                            {getAuthorInitials(proposal.author)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate font-mono text-foreground" title={proposal.author}>
+                          {formatAuthorAddress(proposal.author)}
+                        </span>
+                        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-accent" />
+                      </a>
+                    </div>
+                  ) : null}
+
+                </div>
+              </>
+            )}
           </div>
 
-          {showReadingLocale && (
-            <Card>
-              <CardHeader className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                <CardTitle className="text-base">{tProposals("readingLocale")}</CardTitle>
+          <Card>
+            <CardHeader className="flex flex-col gap-3 pb-4 md:flex-row md:items-center md:justify-between">
+              <CardTitle>{tProposals("proposalContent")}</CardTitle>
+              {showReadingLocale ? (
                 <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {localeOptions
                     .filter((option) => selectableLocales.includes(option.value))
@@ -192,32 +252,37 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                       </Button>
                     ))}
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="text-xs leading-6 text-muted-foreground">
+              ) : null}
+            </CardHeader>
+            <CardContent>
+              {showReadingLocale ? (
+                <p className="mb-4 text-xs leading-6 text-muted-foreground">
                   {isLoading
                     ? tProposals("refreshingProposalContent")
                     : proposal.translation
-                      ? formatMessage(tProposals("translatedBy"), {
+                      ? tProposals("translatedBy", {
                           locale: proposal.translation.locale.toUpperCase(),
                           by: proposal.translation.translatedBy ?? "the translation pipeline",
                         })
                       : tProposals("defaultSourceContent")}
                 </p>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{tProposals("proposalContent")}</CardTitle>
-            </CardHeader>
-            <CardContent>
+              ) : null}
               <div className="proposal-markdown min-w-0 text-muted-foreground">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
                     a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+                    img: ({ node: _node, src, alt, ...props }) => {
+                      const resolvedSrc = resolveMarkdownAssetUrl(src);
+                      if (!resolvedSrc) return null;
+                      return <img {...props} src={resolvedSrc} alt={alt ?? ""} loading="lazy" />;
+                    },
+                    blockquote: ({ node: _node, className, ...props }) => (
+                      <blockquote
+                        {...props}
+                        className={["proposal-quote", className].filter(Boolean).join(" ")}
+                      />
+                    ),
                     ul: ({ node: _node, className, ...props }) => (
                       <ul
                         {...props}
@@ -252,7 +317,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
           </Card>
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle>{tProposals("sourceLinks")}</CardTitle>

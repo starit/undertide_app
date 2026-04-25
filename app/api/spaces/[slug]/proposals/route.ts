@@ -11,6 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
     sort: (searchParams.get("sort") as "time" | "heat" | null) ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+    locale: searchParams.get("locale") ?? undefined,
   });
 
   return NextResponse.json({ data: proposals });

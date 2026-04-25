@@ -1,5 +1,16 @@
 import { Proposal, Space } from "@/lib/types";
 
+const mockAuthors = {
+  arbitrum: "0x8F3f6c68A2d95E6a8aB6A3384D4B1dA7D4cDb423",
+  aave: "0x3D1f2A46B9D8C5F7a6E4B2C9A0d1E3F8B7C6D5A4",
+  ens: "0x6C7F8A9B0d1E2F3A4B5C6D7E8F9A0b1C2D3E4F5A",
+  uniswap: "0x9A4f6D8B2C1E3F5a7B9D0c2E4F6A8b1C3D5E7F9A",
+} as const;
+
+function getSnapshotProfileUrl(address: string) {
+  return `https://snapshot.org/#/profile/${encodeURIComponent(address)}`;
+}
+
 export const spaces: Space[] = [
   {
     slug: "arbitrum-dao",
@@ -98,6 +109,8 @@ export const proposals: Proposal[] = [
     protocol: "Arbitrum DAO",
     spaceSlug: "arbitrum-dao",
     spaceAvatar: null,
+    author: mockAuthors.arbitrum,
+    authorProfileUrl: getSnapshotProfileUrl(mockAuthors.arbitrum),
     status: "Active",
     publishedAt: "2026-04-18T08:00:00Z",
     closesAt: "2026-04-24T08:00:00Z",
@@ -120,6 +133,8 @@ export const proposals: Proposal[] = [
     protocol: "Aave Governance",
     spaceSlug: "aave-governance",
     spaceAvatar: null,
+    author: mockAuthors.aave,
+    authorProfileUrl: getSnapshotProfileUrl(mockAuthors.aave),
     status: "Upcoming",
     publishedAt: "2026-04-19T12:00:00Z",
     closesAt: "2026-04-27T12:00:00Z",
@@ -142,6 +157,8 @@ export const proposals: Proposal[] = [
     protocol: "ENS DAO",
     spaceSlug: "ens-dao",
     spaceAvatar: null,
+    author: mockAuthors.ens,
+    authorProfileUrl: getSnapshotProfileUrl(mockAuthors.ens),
     status: "Closed",
     publishedAt: "2026-04-10T09:00:00Z",
     closesAt: "2026-04-16T09:00:00Z",
@@ -164,6 +181,8 @@ export const proposals: Proposal[] = [
     protocol: "Uniswap Governance",
     spaceSlug: "uniswap-governance",
     spaceAvatar: null,
+    author: mockAuthors.uniswap,
+    authorProfileUrl: getSnapshotProfileUrl(mockAuthors.uniswap),
     status: "Executed",
     publishedAt: "2026-04-03T15:00:00Z",
     closesAt: "2026-04-11T15:00:00Z",
@@ -186,6 +205,8 @@ export const proposals: Proposal[] = [
     protocol: "Arbitrum DAO",
     spaceSlug: "arbitrum-dao",
     spaceAvatar: null,
+    author: mockAuthors.arbitrum,
+    authorProfileUrl: getSnapshotProfileUrl(mockAuthors.arbitrum),
     status: "Active",
     publishedAt: "2026-04-17T08:00:00Z",
     closesAt: "2026-04-22T08:00:00Z",
@@ -208,6 +229,8 @@ export const proposals: Proposal[] = [
     protocol: "Aave Governance",
     spaceSlug: "aave-governance",
     spaceAvatar: null,
+    author: mockAuthors.aave,
+    authorProfileUrl: getSnapshotProfileUrl(mockAuthors.aave),
     status: "Active",
     publishedAt: "2026-04-20T06:00:00Z",
     closesAt: "2026-04-28T06:00:00Z",
