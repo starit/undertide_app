@@ -10,13 +10,13 @@ UnderTide is a Next.js app for Web3 governance intelligence. It syncs governance
 pnpm install
 ```
 
-2. Create env file:
+1. Create env file:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Run dev server:
+1. Run dev server:
 
 ```bash
 pnpm dev

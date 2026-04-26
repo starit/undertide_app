@@ -238,6 +238,11 @@ Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 - Placeholders are restored after translation to preserve exact code-fence structure.
 - If placeholder restoration is incomplete, the script falls back to the source body to avoid storing structurally corrupted markdown.
 
+**Operational behavior:**
+- Proposal rows are fetched in batches (`TRANSLATE_PROPOSALS_BATCH_SIZE`, default `100`) to avoid oversized Neon HTTP responses.
+- The script prints progress counters: translated, skipped(existing), skipped(low-value), failed, remaining.
+- Empty / low-value test-like content is skipped before LLM calls.
+
 ---
 
 ## Multilingual Workflow

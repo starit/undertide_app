@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
   proposalTranslations,
@@ -14,6 +14,7 @@ const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
 const deepseekBaseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 const deepseekModel = process.env.DEEPSEEK_MODEL || "deepseek-chat";
 const defaultLimit = Number(process.env.TRANSLATE_PROPOSALS_LIMIT || "10");
+const proposalBatchSize = Number(process.env.TRANSLATE_PROPOSALS_BATCH_SIZE || "100");
 const requestedProposalId = readArgValue("--proposal-id");
 const requestedLocales = readArgValues("--locale");
 const limit = Number(readArgValue("--limit") || defaultLimit);
@@ -54,78 +55,150 @@ const db = drizzle(sql, {
 async function main() {
   const locales = requestedLocales.length > 0 ? requestedLocales : ["zh", "ja", "ko"];
   validateLocales(locales);
-
-  const proposals = await getSourceProposals(limit, requestedProposalId ?? undefined);
-  if (proposals.length === 0) {
+  const proposalsCount = await countSourceProposals(requestedProposalId ?? undefined);
+  if (proposalsCount === 0) {
     console.log("No proposals found for translation.");
     return;
   }
 
+  const proposalsToProcess = requestedProposalId ? 1 : Math.min(limit, proposalsCount);
+  const totalLocaleTargets = proposalsToProcess * locales.length;
+  let skippedExistingCount = 0;
+  let skippedLowValueCount = 0;
+  let failedCount = 0;
+  let processedLocaleTargets = 0;
   let translatedCount = 0;
 
-  for (const item of proposals) {
-    const existing = await db
-      .select({
-        locale: proposalTranslations.locale,
-      })
-      .from(proposalTranslations)
-      .where(
-        and(
-          eq(proposalTranslations.proposalId, item.proposal.id),
-          inArray(proposalTranslations.locale, locales)
-        )
-      );
+  console.log(
+    `[translate] scope proposals=${proposalsToProcess}, target locales=${locales.join(",")}, potential rows=${totalLocaleTargets}, overwrite=${overwrite}, batchSize=${proposalBatchSize}`
+  );
 
-    const existingLocales = new Set(existing.map((entry) => entry.locale));
-    const targetLocales = overwrite ? locales : locales.filter((locale) => !existingLocales.has(locale));
-
-    if (targetLocales.length === 0) {
-      continue;
+  let offset = 0;
+  while (offset < proposalsToProcess) {
+    const batchLimit = Math.min(proposalBatchSize, proposalsToProcess - offset);
+    const proposals = await getSourceProposals(batchLimit, requestedProposalId ?? undefined, offset);
+    if (proposals.length === 0) {
+      break;
     }
 
-    for (const locale of targetLocales) {
-      const translated = await translateProposal({
-        locale,
-        spaceName: item.space.name,
-        title: item.proposal.title,
-        body: item.proposal.body ?? "",
-        summary: excerpt(item.proposal.body ?? "", 220),
-      });
-
-      await db
-        .insert(proposalTranslations)
-        .values({
-          proposalId: item.proposal.id,
-          locale,
-          title: translated.title,
-          body: translated.body,
-          summary: translated.summary,
-          translatedBy: deepseekModel,
+    for (const item of proposals) {
+      const existing = await db
+        .select({
+          locale: proposalTranslations.locale,
         })
-        .onConflictDoUpdate({
-          target: [proposalTranslations.proposalId, proposalTranslations.locale],
-          set: {
-            title: translated.title,
-            body: translated.body,
-            summary: translated.summary,
-            translatedBy: deepseekModel,
-            updatedAt: new Date(),
-          },
-        });
+        .from(proposalTranslations)
+        .where(
+          and(
+            eq(proposalTranslations.proposalId, item.proposal.id),
+            inArray(proposalTranslations.locale, locales)
+          )
+        );
 
-      translatedCount += 1;
-      console.log(`[translate] ${item.proposal.id} -> ${locale}`);
+      const existingLocales = new Set(existing.map((entry) => entry.locale));
+      const targetLocales = overwrite ? locales : locales.filter((locale) => !existingLocales.has(locale));
+      const skippedForProposal = overwrite ? 0 : locales.length - targetLocales.length;
+      skippedExistingCount += skippedForProposal;
+      processedLocaleTargets += skippedForProposal;
+
+      if (targetLocales.length === 0) {
+        printProgress(
+          processedLocaleTargets,
+          totalLocaleTargets,
+          translatedCount,
+          skippedExistingCount,
+          skippedLowValueCount,
+          failedCount
+        );
+        continue;
+      }
+
+      const skipReason = getLowValueSkipReason(item.proposal.title ?? "", item.proposal.body ?? "");
+      if (skipReason) {
+        skippedLowValueCount += targetLocales.length;
+        processedLocaleTargets += targetLocales.length;
+        console.log(`[translate] skipped ${item.proposal.id}: ${skipReason}`);
+        printProgress(
+          processedLocaleTargets,
+          totalLocaleTargets,
+          translatedCount,
+          skippedExistingCount,
+          skippedLowValueCount,
+          failedCount
+        );
+        continue;
+      }
+
+      for (const locale of targetLocales) {
+        try {
+          const translated = await translateProposal({
+            locale,
+            spaceName: item.space.name,
+            title: item.proposal.title,
+            body: item.proposal.body ?? "",
+            summary: excerpt(item.proposal.body ?? "", 220),
+          });
+
+          await db
+            .insert(proposalTranslations)
+            .values({
+              proposalId: item.proposal.id,
+              locale,
+              title: translated.title,
+              body: translated.body,
+              summary: translated.summary,
+              translatedBy: deepseekModel,
+            })
+            .onConflictDoUpdate({
+              target: [proposalTranslations.proposalId, proposalTranslations.locale],
+              set: {
+                title: translated.title,
+                body: translated.body,
+                summary: translated.summary,
+                translatedBy: deepseekModel,
+                updatedAt: new Date(),
+              },
+            });
+
+          translatedCount += 1;
+          console.log(`[translate] ${item.proposal.id} -> ${locale}`);
+        } catch (error) {
+          failedCount += 1;
+          console.error(
+            `[translate] failed ${item.proposal.id} -> ${locale}:`,
+            error instanceof Error ? error.message : String(error)
+          );
+        } finally {
+          processedLocaleTargets += 1;
+          printProgress(
+            processedLocaleTargets,
+            totalLocaleTargets,
+            translatedCount,
+            skippedExistingCount,
+            skippedLowValueCount,
+            failedCount
+          );
+        }
+      }
     }
+    offset += proposals.length;
   }
 
-  console.log(`Translation completed. Upserted ${translatedCount} rows.`);
+  console.log(
+    `Translation completed. translated=${translatedCount}, skipped(existing)=${skippedExistingCount}, skipped(low-value)=${skippedLowValueCount}, failed=${failedCount}, totalTargets=${totalLocaleTargets}.`
+  );
 }
 
-async function getSourceProposals(limit: number, proposalId?: string) {
+async function getSourceProposals(limit: number, proposalId?: string, offset = 0) {
   const query = db
     .select({
-      proposal: snapshotProposals,
-      space: snapshotSpaces,
+      proposal: {
+        id: snapshotProposals.id,
+        title: snapshotProposals.title,
+        body: snapshotProposals.body,
+      },
+      space: {
+        name: snapshotSpaces.name,
+      },
     })
     .from(snapshotProposals)
     .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id));
@@ -134,7 +207,23 @@ async function getSourceProposals(limit: number, proposalId?: string) {
     return query.where(eq(snapshotProposals.id, proposalId)).limit(1);
   }
 
-  return query.orderBy(snapshotProposals.createdAt).limit(limit);
+  return query.orderBy(snapshotProposals.createdAt).limit(limit).offset(offset);
+}
+
+async function countSourceProposals(proposalId?: string) {
+  if (proposalId) {
+    const [row] = await db
+      .select({ count: count() })
+      .from(snapshotProposals)
+      .where(eq(snapshotProposals.id, proposalId));
+    return Number(row?.count ?? 0);
+  }
+
+  const [row] = await db
+    .select({ count: count() })
+    .from(snapshotProposals);
+
+  return Number(row?.count ?? 0);
 }
 
 async function translateProposal(input: {
@@ -309,6 +398,63 @@ function restoreProtectedMarkdown(
 function excerpt(text: string, length: number) {
   if (!text) return "";
   return text.length <= length ? text : `${text.slice(0, length - 3).trimEnd()}...`;
+}
+
+function getLowValueSkipReason(title: string, body: string) {
+  const normalizedTitle = normalizeForQualityCheck(title);
+  const normalizedBody = normalizeForQualityCheck(body);
+  const combined = `${normalizedTitle}\n${normalizedBody}`.trim();
+
+  if (!combined) {
+    return "empty title/body";
+  }
+
+  if (normalizedBody.length < 80 && normalizedTitle.length < 12) {
+    return "content too short";
+  }
+
+  const lowValuePatterns = [
+    /\btest\b/i,
+    /\blorem ipsum\b/i,
+    /\bdummy\b/i,
+    /\bhello world\b/i,
+    /(^|\s)asdf($|\s)/i,
+    /(^|\s)qwer($|\s)/i,
+  ];
+
+  for (const pattern of lowValuePatterns) {
+    if (pattern.test(combined)) {
+      return `low-value pattern matched (${pattern.source})`;
+    }
+  }
+
+  return null;
+}
+
+function normalizeForQualityCheck(input: string) {
+  return input
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[#>*_`~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function printProgress(
+  processed: number,
+  total: number,
+  translated: number,
+  skipped: number,
+  skippedLowValue: number,
+  failed: number
+) {
+  const safeTotal = total > 0 ? total : 1;
+  const percent = ((processed / safeTotal) * 100).toFixed(1);
+  const remaining = Math.max(0, total - processed);
+  console.log(
+    `[translate] progress ${processed}/${total} (${percent}%) | translated=${translated} skipped(existing)=${skipped} skipped(low-value)=${skippedLowValue} failed=${failed} remaining=${remaining}`
+  );
 }
 
 main().catch((error) => {

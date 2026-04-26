@@ -2,6 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes tide-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes wave-ripple {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.15) rotate(-8deg); }
+  60% { transform: scale(1.1) rotate(6deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.logo-link:hover .logo-icon-box {
+  animation: tide-float 1.2s ease-in-out infinite;
+}
+
+.logo-link:hover .logo-icon {
+  animation: wave-ripple 0.6s ease-in-out forwards;
+}
+
+.logo-subtitle {
+  transition: letter-spacing 500ms;
+}
+
+.logo-link:hover .logo-subtitle {
+  letter-spacing: 0.28em;
+}
+
+@media (min-width: 768px) {
+  .logo-link:hover .logo-subtitle {
+    letter-spacing: 0.36em;
+  }
+}
+
 :root {
   --background: 42 33% 93%;
   --foreground: 206 34% 9%;
