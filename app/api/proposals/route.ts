@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     spaceSlug: searchParams.get("spaceSlug") ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
     locale: searchParams.get("locale") ?? undefined,
+    translatedOnly: searchParams.get("translatedOnly") === "true",
   });
 
   return NextResponse.json(

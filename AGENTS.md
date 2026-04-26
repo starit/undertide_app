@@ -233,6 +233,11 @@ npx tsx scripts/translate-proposals.ts --limit 50 --overwrite
 
 Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 
+**Markdown structure guarantees (important):**
+- The script protects fenced code blocks (` ```...``` `) with placeholders before translation.
+- Placeholders are restored after translation to preserve exact code-fence structure.
+- If placeholder restoration is incomplete, the script falls back to the source body to avoid storing structurally corrupted markdown.
+
 ---
 
 ## Multilingual Workflow
@@ -342,6 +347,8 @@ Same params as `/api/spaces/[slug]/proposals`, plus:
 | Param | Type | Description |
 |---|---|---|
 | `spaceSlug` | `string` | Filter by space ID |
+| `locale` | `string` | Overlay translated title/summary for the locale (`zh`, `ja`, `ko`) |
+| `translatedOnly` | `"true" \| "false"` | When `locale != "en"`, return only proposals with an existing translation for that locale |
 
 Returns: `{ data: Proposal[] }`
 
@@ -484,7 +491,7 @@ All DB access goes through this file. It handles SQL filtering, joining, and map
 | `getProposalTranslation(proposalId, locale)` | `Promise<ProposalTranslation \| null>` |
 | `listSnapshotSyncStates(entityTypes?)` | `Promise<SnapshotSyncState[]>` |
 
-**SQL pushdown:** `spaceSlug`, `status`, `q` (ilike on title/space name), `verified`, and time-ordered `LIMIT` are all pushed to SQL `WHERE`/`ORDER BY`. Heat, importance sort, and category filter are applied in-memory on a capped result set.
+**SQL pushdown:** `spaceSlug`, `status`, `q` (ilike on title/space name), locale-aware translation joins (including `translatedOnly`), and time-ordered `LIMIT` are pushed to SQL `WHERE`/`JOIN`/`ORDER BY`. Heat, importance sort, and category filter are applied in-memory on a capped result set.
 
 **Computed fields:**
 - `heat` = `max(10, min(99, round(log10(scoresTotal + 10) * 24 + log10(memberCount + 10) * 12)))`

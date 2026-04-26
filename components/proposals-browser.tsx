@@ -29,6 +29,7 @@ export function ProposalsBrowser({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("All");
   const [sort, setSort] = useState<(typeof sortOptions)[number]>("Time");
+  const [translatedOnly, setTranslatedOnly] = useState(false);
   const [limit, setLimit] = useState(DEFAULT_PROPOSAL_LIMIT);
   const [results, setResults] = useState(proposals);
   const [isLoading, setIsLoading] = useState(false);
@@ -40,7 +41,7 @@ export function ProposalsBrowser({
 
   useEffect(() => {
     setLimit(DEFAULT_PROPOSAL_LIMIT);
-  }, [deferredQuery, sort, status, initialSpaceSlug]);
+  }, [deferredQuery, sort, status, translatedOnly, initialSpaceSlug]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -51,6 +52,9 @@ export function ProposalsBrowser({
 
     if (locale && locale !== "en") {
       searchParams.set("locale", locale);
+      if (translatedOnly) {
+        searchParams.set("translatedOnly", "true");
+      }
     }
 
     if (deferredQuery.trim()) {
@@ -97,7 +101,7 @@ export function ProposalsBrowser({
     void loadProposals();
 
     return () => controller.abort();
-  }, [deferredQuery, initialSpaceSlug, limit, locale, sort, status]);
+  }, [deferredQuery, initialSpaceSlug, limit, locale, sort, status, translatedOnly]);
 
   return (
     <div className="flex flex-col gap-6 md:gap-8">
@@ -136,6 +140,15 @@ export function ProposalsBrowser({
                 {option === "Time" ? tProposals("time") : tProposals("heat")}
               </Button>
             ))}
+            {locale !== "en" ? (
+              <Button
+                variant={translatedOnly ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setTranslatedOnly((value) => !value)}
+              >
+                {tProposals("translatedOnly")}
+              </Button>
+            ) : null}
           </div>
           <div className="ml-auto flex items-center gap-2 md:ml-0">
             <Button

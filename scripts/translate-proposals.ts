@@ -145,6 +145,7 @@ async function translateProposal(input: {
   summary: string;
 }) {
   const localeConfig = localeConfigs[input.locale];
+  const protectedBody = protectMarkdownCodeFences(input.body);
 
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
@@ -162,6 +163,8 @@ async function translateProposal(input: {
             "You are a professional translator for Web3 governance content.",
             "The source text is a DAO / protocol governance proposal from Snapshot.",
             "Return strict JSON only with keys: title, body, summary.",
+            "Preserve markdown structure exactly, especially fenced code blocks, headings, lists, links, tables, and blockquotes.",
+            "Never remove, alter, reorder, or translate placeholders in the format [[CODE_BLOCK_n]]. Keep each placeholder exactly as-is.",
             "Your translation must preserve factual meaning, voting intent, governance semantics, numbers, dates, token symbols, addresses, proposal states, and links.",
             "Do not omit or soften risk language, treasury terms, parameter values, or execution details.",
             "Keep protocol names, product names, chain names, token tickers, contract terminology, and governance platform terms accurate.",
@@ -181,12 +184,14 @@ async function translateProposal(input: {
             "- Preserve token symbols exactly, such as ETH, ARB, AAVE, ENS, USDC.",
             "- Preserve proposal IDs, addresses, URLs, numbers, percentages, timestamps, and block references exactly.",
             "- Preserve or accurately translate governance terms such as delegate, quorum, proposal, execution, treasury, vote, snapshot, parameter, emission, slashing, liquidation, bridge, rollup, staking, and safety module.",
+            "- Keep markdown syntax intact. Do not remove markdown markers.",
+            "- Keep placeholders like [[CODE_BLOCK_0]] untouched.",
             "- Do not rewrite the meaning to sound like marketing copy.",
             "- Keep the tone serious, clear, and product-grade.",
             "- If the source contains a proper noun with no standard localized form, keep the original term.",
             `Title:\n${input.title}`,
             `Summary:\n${input.summary}`,
-            `Body:\n${input.body}`,
+            `Body:\n${protectedBody.text}`,
           ].join("\n\n"),
         },
       ],
@@ -215,7 +220,11 @@ async function translateProposal(input: {
 
   return {
     title: sanitizeText(parsed.title ?? input.title),
-    body: sanitizeText(parsed.body ?? input.body),
+    body: restoreProtectedMarkdown(
+      sanitizeText(parsed.body ?? protectedBody.text),
+      protectedBody,
+      input.body
+    ),
     summary: sanitizeText(parsed.summary ?? input.summary),
   };
 }
@@ -246,6 +255,55 @@ function validateLocales(locales: string[]) {
 
 function sanitizeText(value: string) {
   return value.replace(/\u0000/g, "").trim();
+}
+
+type ProtectedMarkdown = {
+  text: string;
+  placeholders: string[];
+  blocks: string[];
+};
+
+function protectMarkdownCodeFences(input: string): ProtectedMarkdown {
+  if (!input) {
+    return { text: "", placeholders: [], blocks: [] };
+  }
+
+  const placeholders: string[] = [];
+  const blocks: string[] = [];
+  let index = 0;
+  const text = input.replace(/```[\s\S]*?```/g, (match) => {
+    const placeholder = `[[CODE_BLOCK_${index}]]`;
+    placeholders.push(placeholder);
+    blocks.push(match);
+    index += 1;
+    return placeholder;
+  });
+
+  return { text, placeholders, blocks };
+}
+
+function restoreProtectedMarkdown(
+  translated: string,
+  protectedMarkdown: ProtectedMarkdown,
+  fallbackBody: string
+) {
+  let restored = translated;
+
+  for (let index = 0; index < protectedMarkdown.placeholders.length; index += 1) {
+    const placeholder = protectedMarkdown.placeholders[index];
+    const block = protectedMarkdown.blocks[index];
+    restored = restored.replaceAll(placeholder, block);
+  }
+
+  const missingPlaceholder = protectedMarkdown.placeholders.some((placeholder) => restored.includes(placeholder));
+  if (missingPlaceholder) {
+    console.warn(
+      "[translate] placeholder restoration incomplete; falling back to source body to prevent markdown corruption."
+    );
+    return fallbackBody;
+  }
+
+  return restored;
 }
 
 function excerpt(text: string, length: number) {

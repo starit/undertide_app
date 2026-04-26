@@ -17,6 +17,7 @@ type ProposalFilters = {
   spaceSlug?: string;
   limit?: number;
   locale?: string;
+  translatedOnly?: boolean;
 };
 
 type SpaceFilters = {
@@ -334,47 +335,89 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
     const normalizedLocale = normalizeTranslationLocale(query.locale);
     const baseQuery =
       normalizedLocale && normalizedLocale !== "en"
-        ? db
-            .select({
-              proposal: {
-                id: snapshotProposals.id,
-                spaceId: snapshotProposals.spaceId,
-                title: snapshotProposals.title,
-                author: snapshotProposals.author,
-                createdTs: snapshotProposals.createdTs,
-                endTs: snapshotProposals.endTs,
-                type: snapshotProposals.type,
-                labels: snapshotProposals.labels,
-                quorum: snapshotProposals.quorum,
-                quorumType: snapshotProposals.quorumType,
-                app: snapshotProposals.app,
-                discussion: snapshotProposals.discussion,
-                scoresTotal: snapshotProposals.scoresTotal,
-                votesCount: snapshotProposals.votesCount,
-                state: snapshotProposals.state,
-              },
-              space: {
-                id: snapshotSpaces.id,
-                name: snapshotSpaces.name,
-                avatar: snapshotSpaces.avatar,
-                memberCount: snapshotSpaces.memberCount,
-              },
-              translation: {
-                title: proposalTranslations.title,
-                summary: proposalTranslations.summary,
-              },
-            })
-            .from(snapshotProposals)
-            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-            .leftJoin(
-              proposalTranslations,
-              and(
-                eq(proposalTranslations.proposalId, snapshotProposals.id),
-                eq(proposalTranslations.locale, normalizedLocale)
+        ? query.translatedOnly
+          ? db
+              .select({
+                proposal: {
+                  id: snapshotProposals.id,
+                  spaceId: snapshotProposals.spaceId,
+                  title: snapshotProposals.title,
+                  author: snapshotProposals.author,
+                  createdTs: snapshotProposals.createdTs,
+                  endTs: snapshotProposals.endTs,
+                  type: snapshotProposals.type,
+                  labels: snapshotProposals.labels,
+                  quorum: snapshotProposals.quorum,
+                  quorumType: snapshotProposals.quorumType,
+                  app: snapshotProposals.app,
+                  discussion: snapshotProposals.discussion,
+                  scoresTotal: snapshotProposals.scoresTotal,
+                  votesCount: snapshotProposals.votesCount,
+                  state: snapshotProposals.state,
+                },
+                space: {
+                  id: snapshotSpaces.id,
+                  name: snapshotSpaces.name,
+                  avatar: snapshotSpaces.avatar,
+                  memberCount: snapshotSpaces.memberCount,
+                },
+                translation: {
+                  title: proposalTranslations.title,
+                  summary: proposalTranslations.summary,
+                },
+              })
+              .from(snapshotProposals)
+              .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+              .innerJoin(
+                proposalTranslations,
+                and(
+                  eq(proposalTranslations.proposalId, snapshotProposals.id),
+                  eq(proposalTranslations.locale, normalizedLocale)
+                )
               )
-            )
-            .where(and(...conditions))
-            .orderBy(desc(snapshotProposals.createdAt))
+              .where(and(...conditions))
+              .orderBy(desc(snapshotProposals.createdAt))
+          : db
+              .select({
+                proposal: {
+                  id: snapshotProposals.id,
+                  spaceId: snapshotProposals.spaceId,
+                  title: snapshotProposals.title,
+                  author: snapshotProposals.author,
+                  createdTs: snapshotProposals.createdTs,
+                  endTs: snapshotProposals.endTs,
+                  type: snapshotProposals.type,
+                  labels: snapshotProposals.labels,
+                  quorum: snapshotProposals.quorum,
+                  quorumType: snapshotProposals.quorumType,
+                  app: snapshotProposals.app,
+                  discussion: snapshotProposals.discussion,
+                  scoresTotal: snapshotProposals.scoresTotal,
+                  votesCount: snapshotProposals.votesCount,
+                  state: snapshotProposals.state,
+                },
+                space: {
+                  id: snapshotSpaces.id,
+                  name: snapshotSpaces.name,
+                  avatar: snapshotSpaces.avatar,
+                  memberCount: snapshotSpaces.memberCount,
+                },
+                translation: {
+                  title: proposalTranslations.title,
+                  summary: proposalTranslations.summary,
+                },
+              })
+              .from(snapshotProposals)
+              .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+              .leftJoin(
+                proposalTranslations,
+                and(
+                  eq(proposalTranslations.proposalId, snapshotProposals.id),
+                  eq(proposalTranslations.locale, normalizedLocale)
+                )
+              )
+              .where(and(...conditions))
+              .orderBy(desc(snapshotProposals.createdAt))
         : db
             .select({
               proposal: {

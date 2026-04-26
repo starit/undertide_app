@@ -7,6 +7,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowUpRight, Languages, Link2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +58,79 @@ function getAuthorAvatarStyle(address: string): CSSProperties {
   };
 }
 
+function isFenceBoundary(line: string) {
+  return line.trim().startsWith("```");
+}
+
+function isCodeLikeLine(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (/^\/\/\//.test(trimmed)) return true;
+  if (/^\/\//.test(trimmed)) return true;
+  if (/^[A-Za-z_][\w.]*\([^)]*\);?$/.test(trimmed)) return true;
+  if (/^[A-Za-z_][\w.]*\([^)]*\)\.[A-Za-z_][\w]*\([^)]*\);?$/.test(trimmed)) return true;
+  if (/^[A-Za-z_][\w.]*\s*=\s*.+;?$/.test(trimmed)) return true;
+  if (/[;{}]$/.test(trimmed) && /[A-Za-z_]/.test(trimmed)) return true;
+  return false;
+}
+
+function normalizeMarkdownCodeFences(markdown: string) {
+  if (!markdown.trim()) return markdown;
+
+  const lines = markdown.split("\n");
+  const normalized: string[] = [];
+  let index = 0;
+  let inFence = false;
+
+  while (index < lines.length) {
+    const currentLine = lines[index];
+
+    if (isFenceBoundary(currentLine)) {
+      inFence = !inFence;
+      normalized.push(currentLine);
+      index += 1;
+      continue;
+    }
+
+    if (inFence || !isCodeLikeLine(currentLine)) {
+      normalized.push(currentLine);
+      index += 1;
+      continue;
+    }
+
+    let cursor = index;
+    let codeLineCount = 0;
+    const block: string[] = [];
+
+    while (cursor < lines.length) {
+      const candidate = lines[cursor];
+      if (isFenceBoundary(candidate)) break;
+      if (!candidate.trim()) {
+        block.push(candidate);
+        cursor += 1;
+        continue;
+      }
+      if (!isCodeLikeLine(candidate)) break;
+      codeLineCount += 1;
+      block.push(candidate);
+      cursor += 1;
+    }
+
+    if (codeLineCount >= 3) {
+      normalized.push("```");
+      normalized.push(...block);
+      normalized.push("```");
+      index = cursor;
+      continue;
+    }
+
+    normalized.push(currentLine);
+    index += 1;
+  }
+
+  return normalized.join("\n");
+}
+
 type Props = {
   proposalId: string;
   initialProposal: ProposalDetail;
@@ -74,6 +149,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
     initialProposal.translation ? [initialProposal.translation.locale] : []
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   const requestedLocale = searchParams.get("locale") ?? initialLocale;
 
@@ -121,6 +197,10 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
     };
   }, [initialProposal, proposalId, requestedLocale]);
 
+  useEffect(() => {
+    setIsSummaryExpanded(false);
+  }, [proposal.id, requestedLocale]);
+
   function handleLocaleChange(nextLocale: string) {
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set("locale", nextLocale);
@@ -132,7 +212,9 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
   }
 
   const activeLocale = proposal.translation?.locale ?? "en";
-  const bodyContent = proposal.body || proposal.summary;
+  const summaryText = proposal.summary?.trim() ?? "";
+  const isSummaryLong = summaryText.length > 280;
+  const bodyContent = normalizeMarkdownCodeFences(proposal.body || proposal.summary);
   const selectableLocales = ["en", ...availableLocales.filter((locale) => locale !== "en")];
   const showReadingLocale = availableLocales.length > 0;
 
@@ -267,9 +349,31 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                       : tProposals("defaultSourceContent")}
                 </p>
               ) : null}
+              {summaryText ? (
+                <div className="mb-5 border-l-2 border-border bg-muted/40 px-4 py-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    {tProposals("summary")}
+                  </p>
+                  <p className={`mt-2 text-sm leading-6 text-foreground/90 ${!isSummaryExpanded && isSummaryLong ? "line-clamp-4" : ""}`}>
+                    {summaryText}
+                  </p>
+                  {isSummaryLong ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 h-7 px-0 text-xs"
+                      onClick={() => setIsSummaryExpanded((value) => !value)}
+                    >
+                      {isSummaryExpanded ? tProposals("showLess") : tProposals("showMore")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="proposal-markdown min-w-0 text-muted-foreground">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
+                  rehypePlugins={[rehypeHighlight]}
                   components={{
                     a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
                     img: ({ node: _node, src, alt, ...props }) => {
@@ -277,6 +381,48 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                       if (!resolvedSrc) return null;
                       return <img {...props} src={resolvedSrc} alt={alt ?? ""} loading="lazy" />;
                     },
+                    pre: ({ node: _node, children, ...props }) => {
+                      const firstChild = Array.isArray(children) ? children[0] : children;
+                      const className =
+                        firstChild && typeof firstChild === "object" && "props" in firstChild
+                          ? ((firstChild as { props?: { className?: string } }).props?.className ?? "")
+                          : "";
+                      const languageMatch = /language-([\w-]+)/.exec(className);
+                      const languageLabel = languageMatch?.[1]?.toUpperCase() ?? "CODE";
+
+                      return (
+                        <div className="proposal-code-block">
+                          <div className="proposal-code-block-header">{languageLabel}</div>
+                          <pre {...props} className="proposal-code-block-pre">
+                            {children}
+                          </pre>
+                        </div>
+                      );
+                    },
+                    code: ({ node: _node, className, children, ...props }) => {
+                      const codeText = String(children ?? "");
+                      const isBlockCode =
+                        Boolean(className && (className.includes("language-") || className.includes("hljs"))) ||
+                        codeText.includes("\n");
+                      if (isBlockCode) {
+                        return (
+                          <code {...props} className={className}>
+                            {children}
+                          </code>
+                        );
+                      }
+
+                      return (
+                        <code {...props} className={["proposal-inline-code", className].filter(Boolean).join(" ")}>
+                          {children}
+                        </code>
+                      );
+                    },
+                    table: ({ node: _node, className, ...props }) => (
+                      <div className="proposal-table-wrap">
+                        <table {...props} className={className} />
+                      </div>
+                    ),
                     blockquote: ({ node: _node, className, ...props }) => (
                       <blockquote
                         {...props}

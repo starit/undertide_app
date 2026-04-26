@@ -36,6 +36,17 @@ App will be available at `http://localhost:3000`.
 - `pnpm build` - production build
 - `pnpm sync:snapshot` - incremental sync from Snapshot
 - `pnpm sync:snapshot:full` - full sync from scratch
+- `pnpm translate:proposals` - translate proposals (`zh/ja/ko`) into `proposal_translations`
+
+## API Notes
+
+- `GET /api/proposals` supports `locale=<zh|ja|ko>` for translated overlays.
+- `GET /api/proposals` also supports `translatedOnly=true` (effective when `locale != en`) to return only proposals that already have translations for that locale.
+
+## Translation Notes
+
+- The translation pipeline preserves markdown structure for proposal body content.
+- Fenced code blocks are protected with placeholders before LLM translation and restored afterward to avoid losing code-fence structure in translated output.
 
 ## Project Structure
 
