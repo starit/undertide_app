@@ -10,14 +10,34 @@ import { SpaceCard } from "@/components/space-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const categoryOptions = ["All", "Layer 2", "Treasury", "Risk", "Protocol", "DEX", "Identity", "Public Goods"] as const;
+const categoryOptions = [
+  { value: "All",        label: "All" },
+  { value: "protocol",   label: "Protocol" },
+  { value: "social",     label: "Social" },
+  { value: "service",    label: "Service" },
+  { value: "investment", label: "Investment" },
+  { value: "defi",       label: "DeFi" },
+  { value: "creator",    label: "Creator" },
+  { value: "collector",  label: "Collector" },
+  { value: "grant",      label: "Grant" },
+  { value: "gaming",     label: "Gaming" },
+  { value: "media",      label: "Media" },
+  { value: "defai",      label: "DeFAI" },
+  { value: "meme",       label: "Meme" },
+  { value: "layer-2",    label: "Layer 2" },
+  { value: "ai-agent",   label: "AI Agent" },
+  { value: "depin",      label: "DePIN" },
+  { value: "rwa",        label: "RWA" },
+] as const;
+
+type CategoryValue = (typeof categoryOptions)[number]["value"];
 
 export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
   const tSpaces = useTranslations("spaces");
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<(typeof categoryOptions)[number]>("All");
+  const [category, setCategory] = useState<CategoryValue>("All");
   const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [sort, setSort] = useState<"Activity" | "Followers">("Activity");
   const [results, setResults] = useState(spaces);
@@ -40,7 +60,7 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
     }
 
     if (category !== "All") {
-      searchParams.set("category", category);
+      searchParams.set("category", category as string);
     }
 
     if (verifiedOnly) {
@@ -130,13 +150,13 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {categoryOptions.map((option) => (
           <Button
-            key={option}
-            variant={category === option ? "default" : "outline"}
+            key={option.value}
+            variant={category === option.value ? "default" : "outline"}
             size="sm"
-            onClick={() => setCategory(option)}
+            onClick={() => setCategory(option.value)}
             className="shrink-0"
           >
-            {option}
+            {option.label}
           </Button>
         ))}
       </div>
