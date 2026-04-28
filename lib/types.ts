@@ -19,6 +19,7 @@ export interface Proposal {
   quorumType: string | null;
   app: string | null;
   discussion: string | null;
+  flagged: boolean;
   summary: string;
   body: string | null;
   discussionUrl: string;

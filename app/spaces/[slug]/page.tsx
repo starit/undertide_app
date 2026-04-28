@@ -5,6 +5,7 @@ import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { getSpaceBySlug, listSpaceProposals } from "@/lib/repository";
 import { getServerLocale } from "@/lib/i18n-server";
 import { ProposalsBrowser } from "@/components/proposals-browser";
+import { ScamWarning } from "@/components/scam-warning";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,8 +46,15 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
 
   if (!space) notFound();
 
+  const snapshotSpaceUrl = `https://snapshot.box/#/${encodeURIComponent(space.slug)}`;
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
+      {space.flagged && (
+        <div className="mb-8">
+          <ScamWarning snapshotUrl={snapshotSpaceUrl} type="space" />
+        </div>
+      )}
       <div className="grid gap-8 lg:grid-cols-[1fr_0.8fr]">
         <div className="border border-border bg-card p-5 shadow-panel md:p-8">
           <div className="flex items-start gap-4">

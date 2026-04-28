@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql as drizzleSql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
   proposalTranslations,
@@ -15,6 +15,11 @@ const deepseekBaseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.c
 const deepseekModel = process.env.DEEPSEEK_MODEL || "deepseek-chat";
 const defaultLimit = Number(process.env.TRANSLATE_PROPOSALS_LIMIT || "10");
 const proposalBatchSize = Number(process.env.TRANSLATE_PROPOSALS_BATCH_SIZE || "100");
+const maxResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS || "8192");
+// Bodies longer than this are truncated before sending to the LLM to keep responses within
+// the max_tokens budget. Most proposals are well under 10 000 chars; very long ones
+// (e.g. detailed parameter updates with appendices) are summarised via the excerpt field.
+const maxBodyCharsForTranslation = Number(process.env.TRANSLATE_MAX_BODY_CHARS || "12000");
 const requestedProposalId = readArgValue("--proposal-id");
 const requestedLocales = readArgValues("--locale");
 const limit = Number(readArgValue("--limit") || defaultLimit);
@@ -55,7 +60,7 @@ const db = drizzle(sql, {
 async function main() {
   const locales = requestedLocales.length > 0 ? requestedLocales : ["zh", "ja", "ko"];
   validateLocales(locales);
-  const proposalsCount = await countSourceProposals(requestedProposalId ?? undefined);
+  const proposalsCount = await countSourceProposals(locales, requestedProposalId ?? undefined);
   if (proposalsCount === 0) {
     console.log("No proposals found for translation.");
     return;
@@ -76,7 +81,7 @@ async function main() {
   let offset = 0;
   while (offset < proposalsToProcess) {
     const batchLimit = Math.min(proposalBatchSize, proposalsToProcess - offset);
-    const proposals = await getSourceProposals(batchLimit, requestedProposalId ?? undefined, offset);
+    const proposals = await getSourceProposals(batchLimit, locales, requestedProposalId ?? undefined, offset);
     if (proposals.length === 0) {
       break;
     }
@@ -117,6 +122,24 @@ async function main() {
         skippedLowValueCount += targetLocales.length;
         processedLocaleTargets += targetLocales.length;
         console.log(`[translate] skipped ${item.proposal.id}: ${skipReason}`);
+        // Insert sentinel rows so this proposal is permanently marked and never
+        // re-fetched on future runs. Uses onConflictDoNothing to avoid overwriting
+        // any real translations that might already exist for some locales.
+        if (targetLocales.length > 0) {
+          await db
+            .insert(proposalTranslations)
+            .values(
+              targetLocales.map((locale) => ({
+                proposalId: item.proposal.id,
+                locale,
+                title: null,
+                body: null,
+                summary: null,
+                translatedBy: "skipped:low-value",
+              }))
+            )
+            .onConflictDoNothing();
+        }
         printProgress(
           processedLocaleTargets,
           totalLocaleTargets,
@@ -188,8 +211,8 @@ async function main() {
   );
 }
 
-async function getSourceProposals(limit: number, proposalId?: string, offset = 0) {
-  const query = db
+async function getSourceProposals(batchLimit: number, locales: string[], proposalId?: string, offset = 0) {
+  const baseQuery = db
     .select({
       proposal: {
         id: snapshotProposals.id,
@@ -204,13 +227,42 @@ async function getSourceProposals(limit: number, proposalId?: string, offset = 0
     .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id));
 
   if (proposalId) {
-    return query.where(eq(snapshotProposals.id, proposalId)).limit(1);
+    return baseQuery.where(eq(snapshotProposals.id, proposalId)).limit(1);
   }
 
-  return query.orderBy(snapshotProposals.createdAt).limit(limit).offset(offset);
+  // When not overwriting, push the "needs translation" filter into SQL so we never
+  // waste iterations scanning already-translated proposals on restart.
+  if (!overwrite && locales.length > 0) {
+    const localeList = locales.map((l) => `'${l}'`).join(", ");
+    return baseQuery
+      .where(
+        drizzleSql`(
+          SELECT COUNT(DISTINCT pt.locale)::int
+          FROM proposal_translations pt
+          WHERE pt.proposal_id = ${snapshotProposals.id}
+            AND pt.locale IN (${drizzleSql.raw(localeList)})
+        ) < ${locales.length}
+        AND NOT (
+          COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < 80
+          AND LENGTH(TRIM(${snapshotProposals.title})) < 12
+        )
+        AND (
+          TRIM(${snapshotProposals.title}) != ''
+          OR COALESCE(TRIM(${snapshotProposals.body}), '') != ''
+        )`
+      )
+      .orderBy(drizzleSql`${snapshotProposals.createdAt} DESC`)
+      .limit(batchLimit)
+      .offset(offset);
+  }
+
+  return baseQuery
+    .orderBy(drizzleSql`${snapshotProposals.createdAt} DESC`)
+    .limit(batchLimit)
+    .offset(offset);
 }
 
-async function countSourceProposals(proposalId?: string) {
+async function countSourceProposals(locales: string[], proposalId?: string) {
   if (proposalId) {
     const [row] = await db
       .select({ count: count() })
@@ -219,10 +271,33 @@ async function countSourceProposals(proposalId?: string) {
     return Number(row?.count ?? 0);
   }
 
-  const [row] = await db
-    .select({ count: count() })
-    .from(snapshotProposals);
+  // When not overwriting, count only proposals that still need at least one locale.
+  if (!overwrite && locales.length > 0) {
+    const localeList = locales.map((l) => `'${l}'`).join(", ");
+    const [row] = await db
+      .select({ count: count() })
+      .from(snapshotProposals)
+      .where(
+        drizzleSql`(
+          SELECT COUNT(DISTINCT pt.locale)::int
+          FROM proposal_translations pt
+          WHERE pt.proposal_id = ${snapshotProposals.id}
+            AND pt.locale IN (${drizzleSql.raw(localeList)})
+        ) < ${locales.length}
+        AND NOT (
+          COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < 80
+          AND LENGTH(TRIM(${snapshotProposals.title})) < 12
+        )
+        AND (
+          TRIM(${snapshotProposals.title}) != ''
+          OR COALESCE(TRIM(${snapshotProposals.body}), '') != ''
+        )`
+      );
+    return Number(row?.count ?? 0);
 
+  }
+
+  const [row] = await db.select({ count: count() }).from(snapshotProposals);
   return Number(row?.count ?? 0);
 }
 
@@ -234,7 +309,13 @@ async function translateProposal(input: {
   summary: string;
 }) {
   const localeConfig = localeConfigs[input.locale];
-  const protectedBody = protectMarkdownCodeFences(input.body);
+  // Truncate very long bodies before protecting code fences so we don't send
+  // oversized payloads that would blow past the max_tokens budget.
+  const truncatedBody =
+    input.body.length > maxBodyCharsForTranslation
+      ? `${input.body.slice(0, maxBodyCharsForTranslation)}\n\n[…content truncated for translation…]`
+      : input.body;
+  const protectedBody = protectMarkdownCodeFences(truncatedBody);
 
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
@@ -244,6 +325,7 @@ async function translateProposal(input: {
     },
     body: JSON.stringify({
       model: deepseekModel,
+      max_tokens: maxResponseTokens,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -292,19 +374,31 @@ async function translateProposal(input: {
   }
 
   const json = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
+    choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
   };
-  const content = json.choices?.[0]?.message?.content;
+  const choice = json.choices?.[0];
+  const content = choice?.message?.content;
 
   if (!content) {
     throw new Error("DeepSeek returned an empty translation response.");
   }
 
+  // If the model ran out of tokens the JSON will be truncated and unparseable.
+  if (choice?.finish_reason === "length") {
+    throw new Error(
+      `DeepSeek response was truncated (finish_reason=length) for locale ${input.locale}. ` +
+        `Consider increasing TRANSLATE_MAX_TOKENS or reducing TRANSLATE_MAX_BODY_CHARS.`
+    );
+  }
+
   let parsed: { title?: string; body?: string; summary?: string };
   try {
-    parsed = JSON.parse(content) as typeof parsed;
+    // LLMs occasionally use Unicode curly quotes (U+201C/201D) inside JSON strings
+    // which breaks strict JSON parsing. Normalise them to straight ASCII quotes first.
+    const repaired = content.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+    parsed = JSON.parse(repaired) as typeof parsed;
   } catch {
-    throw new Error(`DeepSeek returned invalid JSON for locale ${input.locale}: ${content.slice(0, 200)}`);
+    throw new Error(`DeepSeek returned invalid JSON for locale ${input.locale}: ${content.slice(0, 400)}`);
   }
 
   return {

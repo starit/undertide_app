@@ -182,6 +182,14 @@ const dictionaries = {
       donateValue: "Sponsor coverage, open data work, or research tooling.",
       contact: "Contact",
     },
+    warnings: {
+      flaggedHeading: "Potentially Dangerous Content",
+      flaggedDescription:
+        "Snapshot has flagged this content as potentially malicious. It may contain phishing links, fake airdrops, or impersonation scams. Do not click any links or take any actions based on this content without independent verification.",
+      flaggedSpaceLabel: "space",
+      flaggedProposalLabel: "proposal",
+      viewOnSnapshot: "View on Snapshot",
+    },
   },
   zh: {
     nav: {
@@ -322,6 +330,14 @@ const dictionaries = {
       donate: "捐助 / 支持",
       donateValue: "赞助覆盖、开放数据工作或研究工具。",
       contact: "联系",
+    },
+    warnings: {
+      flaggedHeading: "潜在危险内容",
+      flaggedDescription:
+        "Snapshot 已将此内容标记为潜在恶意内容，可能包含网络钓鱼链接、虚假空投或仿冒诈骗。在未经独立核实之前，请勿点击任何链接或根据此内容采取任何操作。",
+      flaggedSpaceLabel: "空间",
+      flaggedProposalLabel: "提案",
+      viewOnSnapshot: "在 Snapshot 上查看",
     },
   },
   ja: {
@@ -470,6 +486,14 @@ const dictionaries = {
       donateValue: "カバレッジ、オープンデータ、研究ツールを支援。",
       contact: "連絡先",
     },
+    warnings: {
+      flaggedHeading: "潜在的に危険なコンテンツ",
+      flaggedDescription:
+        "Snapshot はこのコンテンツを悪意ある可能性があるとしてフラグを立てています。フィッシングリンク、偽エアドロップ、なりすまし詐欺が含まれている可能性があります。独立した確認なしにリンクをクリックしたり、このコンテンツに基づいて行動しないでください。",
+      flaggedSpaceLabel: "スペース",
+      flaggedProposalLabel: "提案",
+      viewOnSnapshot: "Snapshot で確認する",
+    },
   },
   ko: {
     nav: {
@@ -616,6 +640,14 @@ const dictionaries = {
       donate: "후원 / 지원",
       donateValue: "커버리지, 오픈 데이터 작업, 리서치 툴링을 후원하세요.",
       contact: "연락처",
+    },
+    warnings: {
+      flaggedHeading: "잠재적으로 위험한 콘텐츠",
+      flaggedDescription:
+        "Snapshot이 이 콘텐츠를 악의적일 수 있는 것으로 플래그 지정했습니다. 피싱 링크, 가짜 에어드롭 또는 사칭 사기가 포함될 수 있습니다. 독립적인 확인 없이 링크를 클릭하거나 이 콘텐츠를 기반으로 어떤 행동도 취하지 마세요.",
+      flaggedSpaceLabel: "스페이스",
+      flaggedProposalLabel: "제안",
+      viewOnSnapshot: "Snapshot에서 보기",
     },
   },
 } satisfies Record<Locale, Record<string, unknown>>;

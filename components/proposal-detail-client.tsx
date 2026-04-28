@@ -135,9 +135,10 @@ type Props = {
   proposalId: string;
   initialProposal: ProposalDetail;
   initialLocale: string;
+  children?: React.ReactNode;
 };
 
-export function ProposalDetailClient({ proposalId, initialProposal, initialLocale }: Props) {
+export function ProposalDetailClient({ proposalId, initialProposal, initialLocale, children }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -220,6 +221,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
+      {children}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
         <div className="flex min-w-0 flex-col gap-8">
           <div className="border border-border bg-card p-5 shadow-panel md:p-8">

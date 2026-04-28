@@ -233,6 +233,15 @@ npx tsx scripts/translate-proposals.ts --limit 50 --overwrite
 
 Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 
+**Environment tuning:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `TRANSLATE_PROPOSALS_BATCH_SIZE` | `100` | Proposals fetched per DB batch |
+| `TRANSLATE_PROPOSALS_LIMIT` | `10` | Default `--limit` value |
+| `TRANSLATE_MAX_TOKENS` | `8192` | `max_tokens` sent to DeepSeek |
+| `TRANSLATE_MAX_BODY_CHARS` | `12000` | Input body truncation threshold |
+
 **Markdown structure guarantees (important):**
 - The script protects fenced code blocks (` ```...``` `) with placeholders before translation.
 - Placeholders are restored after translation to preserve exact code-fence structure.
@@ -240,8 +249,11 @@ Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 
 **Operational behavior:**
 - Proposal rows are fetched in batches (`TRANSLATE_PROPOSALS_BATCH_SIZE`, default `100`) to avoid oversized Neon HTTP responses.
+- Proposals are ordered by `created_at DESC` (newest first) so recent governance is translated before historical content.
+- Low-value proposals (empty body, very short content, test/spam patterns) are skipped and permanently marked with sentinel rows so they are not re-scanned on restart.
 - The script prints progress counters: translated, skipped(existing), skipped(low-value), failed, remaining.
-- Empty / low-value test-like content is skipped before LLM calls.
+- Bodies longer than `TRANSLATE_MAX_BODY_CHARS` are truncated before sending to the LLM.
+- API responses are checked for `finish_reason=length` (truncation) and Unicode curly-quote normalization is applied before JSON parsing.
 
 ---
 

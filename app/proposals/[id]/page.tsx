@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProposalDetailClient } from "@/components/proposal-detail-client";
+import { ScamWarning } from "@/components/scam-warning";
 import { getServerLocale } from "@/lib/i18n-server";
 import { getProposalDetail } from "@/lib/repository";
 
@@ -48,5 +49,13 @@ export default async function ProposalDetailPage({
 
   if (!proposal) notFound();
 
-  return <ProposalDetailClient proposalId={id} initialProposal={proposal} initialLocale={locale ?? serverLocale} />;
+  return (
+    <ProposalDetailClient proposalId={id} initialProposal={proposal} initialLocale={locale ?? serverLocale}>
+      {proposal.flagged && (
+        <div className="mb-6 md:mb-8">
+          <ScamWarning snapshotUrl={proposal.proposalUrl} type="proposal" />
+        </div>
+      )}
+    </ProposalDetailClient>
+  );
 }

@@ -202,6 +202,7 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
     const db = getDb();
 
     const conditions: (SQL | undefined)[] = [
+      eq(snapshotSpaces.flagged, false),
       typeof query.verified === "boolean"
         ? eq(snapshotSpaces.verified, query.verified)
         : undefined,
@@ -321,6 +322,8 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
     const db = getDb();
 
     const conditions: (SQL | undefined)[] = [
+      eq(snapshotProposals.flagged, false),
+      eq(snapshotSpaces.flagged, false),
       query.spaceSlug ? eq(snapshotProposals.spaceId, query.spaceSlug) : undefined,
       query.status && query.status !== "All"
         ? query.status === "Executed"
@@ -699,6 +702,7 @@ function mapProposal(
     quorumType: proposal.quorumType ?? null,
     app: proposal.app ?? null,
     discussion: proposal.discussion || null,
+    flagged: "flagged" in proposal ? proposal.flagged : false,
     summary,
     body: options.includeBody ? rawTranslatedBody || ("body" in proposal ? proposal.body || null : null) : null,
     discussionUrl: proposal.discussion || proposalUrl,
