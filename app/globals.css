@@ -41,6 +41,8 @@
   --foreground: 206 34% 9%;
   --card: 40 35% 95%;
   --card-foreground: 206 34% 9%;
+  --popover: 40 35% 95%;
+  --popover-foreground: 206 34% 9%;
   --primary: 165 33% 17%;
   --primary-hover: 165 35% 20%;
   --primary-foreground: 42 33% 93%;
@@ -50,6 +52,8 @@
   --muted-foreground: 207 15% 34%;
   --accent: 29 74% 35%;
   --accent-foreground: 42 33% 93%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
   --border: 37 21% 72%;
   --input: 37 21% 72%;
   --ring: 165 33% 17%;
@@ -60,6 +64,33 @@
   --info-foreground: 0 0% 100%;
   --warning: 24 77% 34%;
   --warning-foreground: 42 33% 93%;
+
+  /* Surfaces & overlays (aligned with UI tokens for multi-theme swaps) */
+  --page-radial-accent: 42 37% 73%;
+  --page-linear-highlight: 0 0% 100%;
+  --selection-highlight: var(--primary);
+
+  /* Deep surfaces & syntax (proposal markdown code fences / hljs) */
+  --code-background: 222 47% 11%;
+  --code-border: 217 33% 17%;
+  --code-header-background: 220 39% 11%;
+  --code-header-foreground: 215 16% 47%;
+  --code-foreground: 214 32% 91%;
+  --syntax-comment: 215 16% 47%;
+  --syntax-keyword: 270 95% 75%;
+  --syntax-string: 160 84% 39%;
+  --syntax-function: 213 94% 68%;
+  --syntax-number: 38 92% 50%;
+
+  /* Elevation / layout accents */
+  --shadow-color: var(--foreground);
+  --grid-line: var(--foreground);
+
+  /* Deterministic author avatars (hash hue; saturation/lightness follow theme) */
+  --avatar-gradient-sat: 45%;
+  --avatar-gradient-light-a: 28%;
+  --avatar-gradient-sat-accent: 55%;
+  --avatar-gradient-light-b: 38%;
 }
 
 * {
@@ -73,8 +104,8 @@ html {
 body {
   @apply bg-background text-foreground antialiased;
   background-image:
-    radial-gradient(circle at top left, rgba(214, 195, 161, 0.35), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.25), transparent 40%);
+    radial-gradient(circle at top left, hsl(var(--page-radial-accent) / 0.35), transparent 32%),
+    linear-gradient(180deg, hsl(var(--page-linear-highlight) / 0.25), transparent 40%);
 }
 
 a {
@@ -82,7 +113,7 @@ a {
 }
 
 ::selection {
-  background: rgba(29, 58, 50, 0.18);
+  background: hsl(var(--selection-highlight) / 0.18);
 }
 
 .proposal-markdown {
@@ -201,22 +232,22 @@ a {
 }
 
 .proposal-markdown .proposal-code-block {
-  @apply my-6 overflow-hidden rounded-sm border border-border shadow-sm;
-  background: #0f172a;
-  border-color: #1e293b;
+  @apply my-6 overflow-hidden rounded-sm border shadow-sm;
+  background: hsl(var(--code-background));
+  border-color: hsl(var(--code-border));
 }
 
 .proposal-markdown .proposal-code-block-header {
   @apply border-b px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em];
-  border-color: #1e293b;
-  background: #111827;
-  color: #94a3b8;
+  border-color: hsl(var(--code-border));
+  background: hsl(var(--code-header-background));
+  color: hsl(var(--code-header-foreground));
 }
 
 .proposal-markdown .proposal-code-block-pre {
   @apply m-0 overflow-x-auto p-4 font-mono text-[13px] leading-6;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: hsl(var(--code-background));
+  color: hsl(var(--code-foreground));
   white-space: pre;
 }
 
@@ -226,36 +257,36 @@ a {
 
 .proposal-markdown .proposal-code-block-pre .hljs {
   @apply bg-transparent;
-  color: #e2e8f0;
+  color: hsl(var(--code-foreground));
 }
 
 .proposal-markdown .proposal-code-block-pre .hljs-comment,
 .proposal-markdown .proposal-code-block-pre .hljs-quote {
-  color: #64748b;
+  color: hsl(var(--syntax-comment));
 }
 
 .proposal-markdown .proposal-code-block-pre .hljs-keyword,
 .proposal-markdown .proposal-code-block-pre .hljs-selector-tag,
 .proposal-markdown .proposal-code-block-pre .hljs-literal {
-  color: #c084fc;
+  color: hsl(var(--syntax-keyword));
 }
 
 .proposal-markdown .proposal-code-block-pre .hljs-string,
 .proposal-markdown .proposal-code-block-pre .hljs-attr,
 .proposal-markdown .proposal-code-block-pre .hljs-template-tag {
-  color: #34d399;
+  color: hsl(var(--syntax-string));
 }
 
 .proposal-markdown .proposal-code-block-pre .hljs-title,
 .proposal-markdown .proposal-code-block-pre .hljs-function,
 .proposal-markdown .proposal-code-block-pre .hljs-attribute {
-  color: #60a5fa;
+  color: hsl(var(--syntax-function));
 }
 
 .proposal-markdown .proposal-code-block-pre .hljs-number,
 .proposal-markdown .proposal-code-block-pre .hljs-symbol,
 .proposal-markdown .proposal-code-block-pre .hljs-bullet {
-  color: #f59e0b;
+  color: hsl(var(--syntax-number));
 }
 
 .proposal-markdown .proposal-table-wrap {

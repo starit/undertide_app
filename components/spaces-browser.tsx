@@ -32,7 +32,7 @@ const categoryOptions = [
 
 type CategoryValue = (typeof categoryOptions)[number]["value"];
 
-export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
+export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; totalSpacesCount: number }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
   const tSpaces = useTranslations("spaces");
@@ -162,9 +162,10 @@ export function SpacesBrowser({ spaces }: { spaces: Space[] }) {
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          {isLoading ? tSpaces("searching") : tSpaces("loaded", { count: results.length })}
-        </span>
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <span>{tSpaces("supportedSpaces", { count: totalSpacesCount })}</span>
+          <span>{isLoading ? tSpaces("searching") : tSpaces("loaded", { count: results.length })}</span>
+        </div>
       </div>
 
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>

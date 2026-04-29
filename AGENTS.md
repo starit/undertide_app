@@ -239,8 +239,10 @@ Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 |---|---|---|
 | `TRANSLATE_PROPOSALS_BATCH_SIZE` | `100` | Proposals fetched per DB batch |
 | `TRANSLATE_PROPOSALS_LIMIT` | `10` | Default `--limit` value |
-| `TRANSLATE_MAX_TOKENS` | `8192` | `max_tokens` sent to DeepSeek |
+| `TRANSLATE_MAX_TOKENS` | `8192` | `max_tokens` for the **body-only** completion (phase 2) and for **single-shot** |
+| `TRANSLATE_MAX_TOKENS_META` | `3072` | `max_tokens` for the **title + short-summary** completion (phase 1) |
 | `TRANSLATE_MAX_BODY_CHARS` | `12000` | Input body truncation threshold |
+| `TRANSLATE_TWO_PHASE_BODY_CHARS` | `4000` | Above this source body length (before code-fence protection), two DeepSeek completions are used; below, one shot with `title`+`body`+`summary` JSON |
 
 **Markdown structure guarantees (important):**
 - The script protects fenced code blocks (` ```...``` `) with placeholders before translation.
@@ -253,7 +255,8 @@ Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 - Low-value proposals (empty body, very short content, test/spam patterns) are skipped and permanently marked with sentinel rows so they are not re-scanned on restart.
 - The script prints progress counters: translated, skipped(existing), skipped(low-value), failed, remaining.
 - Bodies longer than `TRANSLATE_MAX_BODY_CHARS` are truncated before sending to the LLM.
-- API responses are checked for `finish_reason=length` (truncation) and Unicode curly-quote normalization is applied before JSON parsing.
+- Translation uses **two completions** only when the source body reaches `TRANSLATE_TWO_PHASE_BODY_CHARS` (default 4000 chars): (1) JSON `title` + `summary` from a short excerpt, (2) JSON `body` only. Shorter proposals use a **single** completion with `title`+`body`+`summary` JSON.
+- API responses report `finish_reason` on parse failure when useful; curly-quote normalization assists JSON parsing.
 
 ---
 

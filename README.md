@@ -47,6 +47,7 @@ App will be available at `http://localhost:3000`.
 
 - The translation pipeline preserves markdown structure for proposal body content.
 - Fenced code blocks are protected with placeholders before LLM translation and restored afterward to avoid losing code-fence structure in translated output.
+- **CLI flags, env tuning, two-phase vs single-shot, and troubleshooting:** [`scripts/README.md`](scripts/README.md) (Translate Proposals section).
 
 ## Project Structure
 

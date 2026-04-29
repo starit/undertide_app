@@ -53,7 +53,7 @@ function getAuthorAvatarStyle(address: string): CSSProperties {
   const accentHue = (hue + 42) % 360;
 
   return {
-    background: `linear-gradient(135deg, hsl(${hue} 45% 28%), hsl(${accentHue} 55% 38%))`,
+    background: `linear-gradient(135deg, hsl(${hue} var(--avatar-gradient-sat) var(--avatar-gradient-light-a)), hsl(${accentHue} var(--avatar-gradient-sat-accent) var(--avatar-gradient-light-b)))`,
     color: "hsl(var(--background))",
   };
 }

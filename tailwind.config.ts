@@ -16,6 +16,14 @@ const config: Config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
         "primary-hover": "hsl(var(--primary-hover))",
         brand: {
           DEFAULT: "hsl(var(--brand))",
@@ -57,10 +65,11 @@ const config: Config = {
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        panel: "0 14px 40px rgba(15, 23, 32, 0.08)",
+        panel: "0 14px 40px hsl(var(--shadow-color) / 0.08)",
       },
       backgroundImage: {
-        grid: "linear-gradient(rgba(15,23,32,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,32,0.08) 1px, transparent 1px)",
+        grid:
+          "linear-gradient(hsl(var(--grid-line) / 0.08) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--grid-line) / 0.08) 1px, transparent 1px)",
       },
     },
   },

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { listSpaces } from "@/lib/repository";
+import { getPlatformStats, listSpaces } from "@/lib/repository";
 import { SectionHeading } from "@/components/section-heading";
 import { SpacesBrowser } from "@/components/spaces-browser";
 
@@ -16,7 +16,10 @@ export const metadata: Metadata = {
 
 export default async function SpacesPage() {
   const tSpaces = await getTranslations("spaces");
-  const spaces = await listSpaces({ sort: "activity", verified: true, limit: INITIAL_SPACE_LIMIT });
+  const [spaces, stats] = await Promise.all([
+    listSpaces({ sort: "activity", verified: true, limit: INITIAL_SPACE_LIMIT }),
+    getPlatformStats(),
+  ]);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 md:py-16">
@@ -26,7 +29,7 @@ export default async function SpacesPage() {
         description={tSpaces("description")}
       />
       <div className="mt-10">
-        <SpacesBrowser spaces={spaces} />
+        <SpacesBrowser spaces={spaces} totalSpacesCount={stats.spacesCount} />
       </div>
     </section>
   );

@@ -20,6 +20,10 @@ const maxResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS || "8192");
 // the max_tokens budget. Most proposals are well under 10 000 chars; very long ones
 // (e.g. detailed parameter updates with appendices) are summarised via the excerpt field.
 const maxBodyCharsForTranslation = Number(process.env.TRANSLATE_MAX_BODY_CHARS || "12000");
+// If protected body exceeds this UTF-16 length (same limit as truncation source), translate in
+// two completions (meta + body-only) to avoid max_tokens truncation inside one huge JSON blob.
+const twoPhaseBodyCharThreshold = Number(process.env.TRANSLATE_TWO_PHASE_BODY_CHARS || "4000");
+const maxMetaResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS_META || "3072");
 const requestedProposalId = readArgValue("--proposal-id");
 const requestedLocales = readArgValues("--locale");
 const limit = Number(readArgValue("--limit") || defaultLimit);
@@ -301,6 +305,65 @@ async function countSourceProposals(locales: string[], proposalId?: string) {
   return Number(row?.count ?? 0);
 }
 
+function repairQuotedJsonAssist(value: string) {
+  return value.replace(/\u201C|\u201D/g, '"').replace(/\u2018|\u2019/g, "'");
+}
+
+class AssistantJsonParseError extends Error {
+  content: string;
+  finishReason?: string;
+  hint: string;
+  locale: string;
+
+  constructor(args: { content: string; locale: string; finishReason?: string; hint: string; message: string }) {
+    super(args.message);
+    this.name = "AssistantJsonParseError";
+    this.content = args.content;
+    this.finishReason = args.finishReason;
+    this.hint = args.hint;
+    this.locale = args.locale;
+  }
+}
+
+function parseJsonFromAssistant(content: string, locale: string, finishReason: string | undefined, hint: string): unknown {
+  if (finishReason === "length") {
+    throw new AssistantJsonParseError({
+      content,
+      locale,
+      finishReason,
+      hint,
+      message:
+        `DeepSeek truncated (${hint}), finish_reason=length — raise TRANSLATE_MAX_TOKENS / TRANSLATE_MAX_TOKENS_META or lower TRANSLATE_MAX_BODY_CHARS.`,
+    });
+  }
+  try {
+    return JSON.parse(repairQuotedJsonAssist(content));
+  } catch {
+    const repaired = repairQuotedJsonAssist(content);
+    const extracted =
+      hint === "single-shot"
+        ? extractSingleShotFields(repaired)
+        : hint === "phase1:title+summary"
+          ? extractMetaFields(repaired)
+          : null;
+    if (extracted) {
+      return extracted;
+    }
+    throw new AssistantJsonParseError({
+      content,
+      locale,
+      finishReason,
+      hint,
+      message:
+        `DeepSeek invalid JSON ${hint} (${locale}) finish_reason=${finishReason ?? "?"}\n${repaired.slice(0, 620)}`,
+    });
+  }
+}
+
+/**
+ * Short proposals: one completion ({ title, body, summary } JSON).
+ * When `truncatedBody` reaches `TRANSLATE_TWO_PHASE_BODY_CHARS`, split into meta + body-only completions.
+ */
 async function translateProposal(input: {
   locale: string;
   spaceName: string;
@@ -308,15 +371,75 @@ async function translateProposal(input: {
   body: string;
   summary: string;
 }) {
-  const localeConfig = localeConfigs[input.locale];
-  // Truncate very long bodies before protecting code fences so we don't send
-  // oversized payloads that would blow past the max_tokens budget.
+  const excerptBasis = buildMetaExcerpt(input.body ?? "", input.summary);
+
   const truncatedBody =
     input.body.length > maxBodyCharsForTranslation
       ? `${input.body.slice(0, maxBodyCharsForTranslation)}\n\n[…content truncated for translation…]`
       : input.body;
+
   const protectedBody = protectMarkdownCodeFences(truncatedBody);
 
+  const useTwoPhase =
+    truncatedBody.length >= twoPhaseBodyCharThreshold && sanitizeText(protectedBody.text).length > 0;
+
+  if (!useTwoPhase) {
+    try {
+      return await translateProposalSingleShot(input, protectedBody);
+    } catch (error) {
+      if (
+        error instanceof AssistantJsonParseError &&
+        sanitizeText(protectedBody.text).length > 0
+      ) {
+        console.warn(
+          `[translate] single-shot parse failed for ${input.locale}; retrying in two-phase mode (${error.hint}, finish_reason=${error.finishReason ?? "?"})`
+        );
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  const meta = await translateTitleAndSummaryRound({
+    locale: input.locale,
+    spaceName: input.spaceName,
+    title: input.title,
+    excerpt: excerptBasis || input.title,
+  });
+
+  if (!sanitizeText(protectedBody.text)) {
+    return {
+      title: sanitizeText(meta.title ?? input.title),
+      summary: sanitizeText(meta.summary ?? ""),
+      body: "",
+    };
+  }
+
+  const rawBodyTranslated = await translateBodyRound({
+    locale: input.locale,
+    spaceName: input.spaceName,
+    translatedTitle: meta.title ?? input.title,
+    protectedBody,
+  });
+
+  return {
+    title: sanitizeText(meta.title ?? input.title),
+    summary: sanitizeText(meta.summary ?? excerptBasis),
+    body: restoreProtectedMarkdown(sanitizeText(rawBodyTranslated), protectedBody, input.body),
+  };
+}
+
+async function translateProposalSingleShot(
+  input: {
+    locale: string;
+    spaceName: string;
+    title: string;
+    body: string;
+    summary: string;
+  },
+  protectedBody: { text: string; placeholders: string[]; blocks: string[] }
+): Promise<{ title: string; body: string; summary: string }> {
+  const lc = localeConfigs[input.locale];
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -325,45 +448,29 @@ async function translateProposal(input: {
     },
     body: JSON.stringify({
       model: deepseekModel,
+      temperature: 0,
       max_tokens: maxResponseTokens,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: [
-            "You are a professional translator for Web3 governance content.",
-            "The source text is a DAO / protocol governance proposal from Snapshot.",
-            "Return strict JSON only with keys: title, body, summary.",
-            "Preserve markdown structure exactly, especially fenced code blocks, headings, lists, links, tables, and blockquotes.",
-            "Never remove, alter, reorder, or translate placeholders in the format [[CODE_BLOCK_n]]. Keep each placeholder exactly as-is.",
-            "Your translation must preserve factual meaning, voting intent, governance semantics, numbers, dates, token symbols, addresses, proposal states, and links.",
-            "Do not omit or soften risk language, treasury terms, parameter values, or execution details.",
-            "Keep protocol names, product names, chain names, token tickers, contract terminology, and governance platform terms accurate.",
-            "When a technical or governance term is standard in Web3, prefer the standard translation used by crypto users rather than a generic business translation.",
-            "Preserve list structure and option labels when possible.",
-            "Do not add commentary, explanation, or extra fields.",
-          ].join(" "),
+          content:
+            [
+              "You translate Web3 DAO governance proposals from Snapshot.",
+              "Return STRICT JSON ONLY with keys: title, body, summary.",
+              "Preserve markdown; never alter [[CODE_BLOCK_n]] placeholders.",
+              "Preserve token symbols, URLs, addresses, numbers. Do not emit keys other than title, body, summary.",
+            ].join(" "),
         },
         {
           role: "user",
-          content: [
-            localeConfig.instruction,
-            `Target locale: ${localeConfig.label} (${input.locale})`,
-            `Protocol / governance space: ${input.spaceName}`,
-            "Context: This is a Web3 governance proposal. Translate it for readers who follow DAO governance, protocol upgrades, treasury management, risk parameter changes, delegate voting, and on-chain ecosystem operations.",
-            "Translation rules:",
-            "- Preserve token symbols exactly, such as ETH, ARB, AAVE, ENS, USDC.",
-            "- Preserve proposal IDs, addresses, URLs, numbers, percentages, timestamps, and block references exactly.",
-            "- Preserve or accurately translate governance terms such as delegate, quorum, proposal, execution, treasury, vote, snapshot, parameter, emission, slashing, liquidation, bridge, rollup, staking, and safety module.",
-            "- Keep markdown syntax intact. Do not remove markdown markers.",
-            "- Keep placeholders like [[CODE_BLOCK_0]] untouched.",
-            "- Do not rewrite the meaning to sound like marketing copy.",
-            "- Keep the tone serious, clear, and product-grade.",
-            "- If the source contains a proper noun with no standard localized form, keep the original term.",
-            `Title:\n${input.title}`,
-            `Summary:\n${input.summary}`,
+          content:
+            `${lc.instruction}\n` +
+            `Target locale: ${lc.label} (${input.locale})\n` +
+            `Protocol / governance space: ${input.spaceName}\n\n` +
+            `Title:\n${input.title}\n` +
+            `Summary (short excerpt for context):\n${input.summary}\n` +
             `Body:\n${protectedBody.text}`,
-          ].join("\n\n"),
         },
       ],
     }),
@@ -373,43 +480,179 @@ async function translateProposal(input: {
     throw new Error(`DeepSeek API request failed: ${response.status} ${response.statusText}`);
   }
 
-  const json = (await response.json()) as {
+  const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
   };
-  const choice = json.choices?.[0];
+  const choice = payload.choices?.[0];
   const content = choice?.message?.content;
+  if (!content) throw new Error("DeepSeek returned an empty translation response.");
 
-  if (!content) {
-    throw new Error("DeepSeek returned an empty translation response.");
-  }
-
-  // If the model ran out of tokens the JSON will be truncated and unparseable.
-  if (choice?.finish_reason === "length") {
-    throw new Error(
-      `DeepSeek response was truncated (finish_reason=length) for locale ${input.locale}. ` +
-        `Consider increasing TRANSLATE_MAX_TOKENS or reducing TRANSLATE_MAX_BODY_CHARS.`
-    );
-  }
-
-  let parsed: { title?: string; body?: string; summary?: string };
-  try {
-    // LLMs occasionally use Unicode curly quotes (U+201C/201D) inside JSON strings
-    // which breaks strict JSON parsing. Normalise them to straight ASCII quotes first.
-    const repaired = content.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
-    parsed = JSON.parse(repaired) as typeof parsed;
-  } catch {
-    throw new Error(`DeepSeek returned invalid JSON for locale ${input.locale}: ${content.slice(0, 400)}`);
-  }
+  const parsed = parseJsonFromAssistant(content, input.locale, choice?.finish_reason, "single-shot") as {
+    title?: string;
+    body?: string;
+    summary?: string;
+  };
 
   return {
     title: sanitizeText(parsed.title ?? input.title),
-    body: restoreProtectedMarkdown(
-      sanitizeText(parsed.body ?? protectedBody.text),
-      protectedBody,
-      input.body
-    ),
     summary: sanitizeText(parsed.summary ?? input.summary),
+    body: restoreProtectedMarkdown(sanitizeText(parsed.body ?? protectedBody.text), protectedBody, input.body),
   };
+}
+
+async function translateTitleAndSummaryRound(args: {
+  locale: string;
+  spaceName: string;
+  title: string;
+  excerpt: string;
+}) {
+  const lc = localeConfigs[args.locale];
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${deepseekApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: deepseekModel,
+        temperature: 0,
+        max_tokens: attempt === 1 ? maxMetaResponseTokens : Math.min(maxMetaResponseTokens, 1536),
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              [
+                'You output ONLY JSON keys "title" and "summary". Never include body or raw proposal markdown repetition.',
+                "The excerpt parameter is SHORT plain text only — summarise it faithfully in one compact paragraph.",
+                "Keep summary concise: ideally under 140 Chinese characters or equivalent brevity in the target language.",
+                "Do not emit bullet lists, staffing rosters, or repeated line-by-line role descriptions unless absolutely essential.",
+                'Do NOT restate hierarchical staffing/org charts bullet-for-bullet unless excerpt already does so in miniature.',
+                attempt === 2
+                  ? "Retry mode: keep summary much shorter, avoid bullet explosion, and finish valid JSON decisively."
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" "),
+          },
+          {
+            role: "user",
+            content:
+              `${lc.instruction}\n` +
+              `Target locale: ${lc.label} (${args.locale})\n` +
+              `Protocol / governance space: ${args.spaceName}\n\n` +
+              `Title:\n${args.title}\n\n` +
+              `Preview excerpt ONLY:\n${args.excerpt}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`DeepSeek API request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
+    };
+    const choice = payload.choices?.[0];
+    const content = choice?.message?.content;
+    if (!content) throw new Error("DeepSeek returned empty meta (title/summary).");
+
+    try {
+      const parsed = parseJsonFromAssistant(content, args.locale, choice?.finish_reason, "phase1:title+summary") as {
+        title?: string;
+        summary?: string;
+      };
+      return {
+        title: parsed.title ?? args.title,
+        summary: parsed.summary ?? args.excerpt,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) break;
+    }
+  }
+
+  if (lastError instanceof AssistantJsonParseError) {
+    const fallback =
+      lastError.finishReason === "length"
+        ? null
+        : extractPartialMeta(lastError.content, args.title, args.excerpt);
+    if (fallback && isRecoveredMetaSafe(fallback, args.title, args.excerpt)) {
+      console.warn(
+        `[translate] recovered partial meta for ${args.locale} from malformed JSON (${lastError.hint}, finish_reason=${lastError.finishReason ?? "?"})`
+      );
+      return {
+        title: fallback.title || args.title,
+        summary: fallback.summary || args.excerpt,
+      };
+    }
+  }
+
+  throw lastError;
+}
+
+async function translateBodyRound(args: {
+  locale: string;
+  spaceName: string;
+  translatedTitle: string;
+  protectedBody: { text: string; placeholders: string[]; blocks: string[] };
+}) {
+  const lc = localeConfigs[args.locale];
+  const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${deepseekApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: deepseekModel,
+      temperature: 0,
+      max_tokens: maxResponseTokens,
+      messages: [
+        {
+          role: "system",
+          content:
+            [
+              "Translate Snapshot governance BODY markdown ONLY.",
+              "Return ONLY the translated markdown body text. No JSON. No code fences around your answer.",
+              'Keep [[CODE_BLOCK_n]] verbatim; never omit them.',
+              "Preserve headings, lists, markdown links emphasis — translate prose only.",
+            ].join(" "),
+        },
+        {
+          role: "user",
+          content:
+            `${lc.instruction}\n` +
+            `Target locale: ${lc.label} (${args.locale})\n` +
+            `Protocol / governance space: ${args.spaceName}\n\n` +
+            `Translated title:\n${args.translatedTitle}\n\n` +
+            `Body:\n${args.protectedBody.text}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DeepSeek API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
+  };
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content;
+  if (!content) throw new Error("DeepSeek returned empty body translation.");
+  if (choice?.finish_reason === "length") {
+    throw new Error(
+      `DeepSeek truncated (phase2:body-only), finish_reason=length — raise TRANSLATE_MAX_TOKENS or lower TRANSLATE_MAX_BODY_CHARS.`
+    );
+  }
+  return sanitizeBodyOnlyOutput(content);
 }
 
 function readArgValue(flag: string) {
@@ -438,6 +681,84 @@ function validateLocales(locales: string[]) {
 
 function sanitizeText(value: string) {
   return value.replace(/\u0000/g, "").trim();
+}
+
+function buildMetaExcerpt(body: string, fallbackSummary: string) {
+  const source = excerpt(body, 260) || fallbackSummary.trim();
+  const normalized = normalizeExcerptText(source).slice(0, 320);
+  return normalized || fallbackSummary.trim();
+}
+
+function normalizeExcerptText(value: string) {
+  return value.replace(/[#>*_`~-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function decodeLooseJsonString(value: string) {
+  try {
+    return JSON.parse(`"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+  } catch {
+    return value
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
+}
+
+function extractSingleShotFields(content: string) {
+  const match = content.match(
+    /"title"\s*:\s*"([\s\S]*?)",\s*"body"\s*:\s*"([\s\S]*?)",\s*"summary"\s*:\s*"([\s\S]*?)"\s*}/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    title: sanitizeText(decodeLooseJsonString(match[1])),
+    body: sanitizeText(decodeLooseJsonString(match[2])),
+    summary: sanitizeText(decodeLooseJsonString(match[3])),
+  };
+}
+
+function extractMetaFields(content: string) {
+  const match = content.match(/"title"\s*:\s*"([\s\S]*?)",\s*"summary"\s*:\s*"([\s\S]*?)"\s*}/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    title: sanitizeText(decodeLooseJsonString(match[1])),
+    summary: sanitizeText(decodeLooseJsonString(match[2])),
+  };
+}
+
+function extractPartialMeta(content: string, fallbackTitle: string, fallbackSummary: string) {
+  const repaired = repairQuotedJsonAssist(content);
+  const titleMatch = repaired.match(/"title"\s*:\s*"([\s\S]*?)"\s*,/);
+  const summaryClosedMatch = repaired.match(/"summary"\s*:\s*"([\s\S]*?)"\s*(?:[,}])/);
+
+  if (!titleMatch || !summaryClosedMatch) {
+    return null;
+  }
+
+  const title = sanitizeText(decodeLooseJsonString(titleMatch[1]));
+  const summary = sanitizeText(decodeLooseJsonString(summaryClosedMatch[1]));
+
+  return { title, summary };
+}
+
+function isRecoveredMetaSafe(
+  recovered: { title: string; summary: string },
+  fallbackTitle: string,
+  fallbackSummary: string
+) {
+  if (!recovered.title || !recovered.summary) return false;
+  if (recovered.title.endsWith("\\") || recovered.summary.endsWith("\\")) return false;
+  if (recovered.title.length > 240 || recovered.summary.length > 900) return false;
+  if (recovered.title === fallbackTitle && recovered.summary === fallbackSummary) return false;
+  return true;
 }
 
 type ProtectedMarkdown = {
@@ -475,7 +796,14 @@ function restoreProtectedMarkdown(
   for (let index = 0; index < protectedMarkdown.placeholders.length; index += 1) {
     const placeholder = protectedMarkdown.placeholders[index];
     const block = protectedMarkdown.blocks[index];
-    restored = restored.replaceAll(placeholder, block);
+    const placeholderCount = restored.split(placeholder).length - 1;
+    if (placeholderCount !== 1) {
+      console.warn(
+        `[translate] placeholder validation failed for ${placeholder}: expected 1 occurrence, got ${placeholderCount}; falling back to source body.`
+      );
+      return fallbackBody;
+    }
+    restored = restored.split(placeholder).join(block);
   }
 
   const missingPlaceholder = protectedMarkdown.placeholders.some((placeholder) => restored.includes(placeholder));
@@ -487,6 +815,37 @@ function restoreProtectedMarkdown(
   }
 
   return restored;
+}
+
+function sanitizeBodyOnlyOutput(content: string) {
+  let value = content.trim();
+
+  const fencedMatch = value.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i);
+  if (fencedMatch) {
+    value = fencedMatch[1].trim();
+  }
+
+  const wrapperPatterns = [
+    /^(?:here is the translated markdown body|here is the translated body|translated body):\s*/i,
+    /^(?:以下是译文正文|以下是翻译后的正文|以下为翻译后的正文|正文翻译如下)：?\s*/i,
+  ];
+
+  for (const pattern of wrapperPatterns) {
+    if (pattern.test(value)) {
+      value = value.replace(pattern, "").trim();
+      break;
+    }
+  }
+
+  if (!value) {
+    throw new Error("DeepSeek body-only phase returned empty content after sanitization.");
+  }
+
+  if (/^(?:here is|translated body:|以下是|以下为)/i.test(value)) {
+    throw new Error("DeepSeek body-only phase returned assistant wrapper prose instead of raw markdown body.");
+  }
+
+  return value;
 }
 
 function excerpt(text: string, length: number) {
