@@ -6,9 +6,21 @@ import {
   snapshotSyncRuns,
   snapshotSyncState,
   snapshotSpaces,
+  tallyOrganizations,
+  tallyProposals,
 } from "@/db/drizzle-schema";
 import { getDb, hasDatabase } from "@/lib/db";
-import { PlatformStats, Proposal, ProposalStatus, ProposalTranslation, SnapshotSyncState, Space } from "@/lib/types";
+import { GOVERNANCE_SOURCES } from "@/lib/governance/sources";
+import {
+  PlatformStats,
+  Proposal,
+  ProposalStatus,
+  ProposalTranslation,
+  SnapshotSyncState,
+  Space,
+  TallyOrganization,
+  TallyProposal,
+} from "@/lib/types";
 
 type ProposalFilters = {
   q?: string;
@@ -25,6 +37,21 @@ type SpaceFilters = {
   category?: string;
   verified?: boolean;
   sort?: "activity" | "followers";
+  limit?: number;
+};
+
+type TallyOrganizationFilters = {
+  q?: string;
+  hasActiveProposals?: boolean;
+  limit?: number;
+};
+
+type TallyProposalFilters = {
+  q?: string;
+  organizationId?: string;
+  organizationSlug?: string;
+  status?: string;
+  chainId?: string;
   limit?: number;
 };
 
@@ -90,6 +117,9 @@ type SnapshotSyncStateRecord = typeof snapshotSyncState.$inferSelect & {
   latestRun: typeof snapshotSyncRuns.$inferSelect | null;
 };
 
+type TallyOrganizationRecord = typeof tallyOrganizations.$inferSelect;
+type TallyProposalRecord = typeof tallyProposals.$inferSelect;
+
 export async function listSpaces(query: SpaceFilters = {}): Promise<Space[]> {
   return getCachedSpaces(normalizeSpaceFilters(query));
 }
@@ -152,6 +182,48 @@ export async function listSpaceProposals(spaceSlug: string, query: Omit<Proposal
 export async function listSnapshotSyncStates(entityTypes?: string[]): Promise<SnapshotSyncState[]> {
   const records = await fetchSnapshotSyncStates(entityTypes);
   return records.map(mapSnapshotSyncState);
+}
+
+export async function listTallySyncStates(entityTypes?: string[]): Promise<SnapshotSyncState[]> {
+  const normalizedEntityTypes =
+    entityTypes && entityTypes.length > 0
+      ? entityTypes.map(normalizeTallySyncEntityType)
+      : [GOVERNANCE_SOURCES.tally.spaceEntityType, GOVERNANCE_SOURCES.tally.proposalEntityType];
+
+  return listSnapshotSyncStates(normalizedEntityTypes);
+}
+
+export async function listTallyOrganizations(query: TallyOrganizationFilters = {}): Promise<TallyOrganization[]> {
+  const records = await fetchTallyOrganizations(query);
+  return records.map(mapTallyOrganization);
+}
+
+export async function getTallyOrganization(idOrSlug: string): Promise<TallyOrganization | null> {
+  const record = await fetchTallyOrganization(idOrSlug);
+  return record ? mapTallyOrganization(record) : null;
+}
+
+export async function listTallyProposals(query: TallyProposalFilters = {}): Promise<TallyProposal[]> {
+  const records = await fetchTallyProposals(query);
+  return records.map(mapTallyProposal);
+}
+
+export async function listTallyOrganizationProposals(
+  idOrSlug: string,
+  query: Omit<TallyProposalFilters, "organizationId" | "organizationSlug"> = {}
+): Promise<TallyProposal[]> {
+  const organization = await fetchTallyOrganization(idOrSlug);
+  if (!organization) return [];
+
+  return listTallyProposals({
+    ...query,
+    organizationId: organization.id,
+  });
+}
+
+export async function getTallyProposal(id: string): Promise<TallyProposal | null> {
+  const record = await fetchTallyProposal(id);
+  return record ? mapTallyProposal(record) : null;
 }
 
 export async function getPlatformStats(): Promise<PlatformStats> {
@@ -560,6 +632,115 @@ async function fetchSnapshotSyncStates(entityTypes?: string[]): Promise<Snapshot
   }
 }
 
+async function fetchTallyOrganizations(query: TallyOrganizationFilters = {}): Promise<TallyOrganizationRecord[]> {
+  if (!hasDatabase) return [];
+
+  try {
+    const db = getDb();
+    const conditions: SQL[] = [];
+    const normalizedQ = normalizeOptionalString(query.q);
+
+    if (normalizedQ) {
+      conditions.push(or(ilike(tallyOrganizations.name, `%${normalizedQ}%`), ilike(tallyOrganizations.slug, `%${normalizedQ}%`))!);
+    }
+
+    if (typeof query.hasActiveProposals === "boolean") {
+      conditions.push(eq(tallyOrganizations.hasActiveProposals, query.hasActiveProposals));
+    }
+
+    const baseQuery = db.select().from(tallyOrganizations);
+    const ordered =
+      conditions.length > 0
+        ? baseQuery.where(and(...conditions)).orderBy(desc(tallyOrganizations.hasActiveProposals), desc(tallyOrganizations.proposalsCount), tallyOrganizations.name)
+        : baseQuery.orderBy(desc(tallyOrganizations.hasActiveProposals), desc(tallyOrganizations.proposalsCount), tallyOrganizations.name);
+
+    return await ordered.limit(normalizeLimit(query.limit, 100));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchTallyOrganization(idOrSlug: string): Promise<TallyOrganizationRecord | null> {
+  if (!hasDatabase) return null;
+
+  try {
+    const db = getDb();
+    const [record] = await db
+      .select()
+      .from(tallyOrganizations)
+      .where(or(eq(tallyOrganizations.id, idOrSlug), eq(tallyOrganizations.slug, idOrSlug)))
+      .limit(1);
+
+    return record ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTallyProposals(query: TallyProposalFilters = {}): Promise<TallyProposalRecord[]> {
+  if (!hasDatabase) return [];
+
+  try {
+    const db = getDb();
+    const conditions: SQL[] = [];
+    const normalizedQ = normalizeOptionalString(query.q);
+    const normalizedStatus = normalizeOptionalString(query.status);
+
+    if (query.organizationId) {
+      conditions.push(eq(tallyProposals.organizationId, query.organizationId));
+    }
+
+    if (query.organizationSlug) {
+      conditions.push(eq(tallyProposals.organizationSlug, query.organizationSlug));
+    }
+
+    if (normalizedStatus && normalizedStatus !== "All") {
+      conditions.push(eq(sql<string>`lower(${tallyProposals.status})`, normalizedStatus.toLowerCase()));
+    }
+
+    if (query.chainId) {
+      conditions.push(eq(tallyProposals.chainId, query.chainId));
+    }
+
+    if (normalizedQ) {
+      conditions.push(
+        or(
+          ilike(tallyProposals.title, `%${normalizedQ}%`),
+          ilike(tallyProposals.organizationName, `%${normalizedQ}%`),
+          ilike(tallyProposals.description, `%${normalizedQ}%`)
+        )!
+      );
+    }
+
+    const baseQuery = db.select().from(tallyProposals);
+    const ordered =
+      conditions.length > 0
+        ? baseQuery.where(and(...conditions)).orderBy(desc(tallyProposals.sourceCreatedAt), desc(tallyProposals.syncedAt))
+        : baseQuery.orderBy(desc(tallyProposals.sourceCreatedAt), desc(tallyProposals.syncedAt));
+
+    return await ordered.limit(normalizeLimit(query.limit, 100));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchTallyProposal(id: string): Promise<TallyProposalRecord | null> {
+  if (!hasDatabase) return null;
+
+  try {
+    const db = getDb();
+    const [record] = await db
+      .select()
+      .from(tallyProposals)
+      .where(eq(tallyProposals.id, id))
+      .limit(1);
+
+    return record ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchPlatformStats(): Promise<PlatformStats> {
   if (!hasDatabase) {
     return emptyPlatformStats();
@@ -745,6 +926,54 @@ function mapSnapshotSyncState(record: SnapshotSyncStateRecord): SnapshotSyncStat
   };
 }
 
+function mapTallyOrganization(record: TallyOrganizationRecord): TallyOrganization {
+  return {
+    id: record.id,
+    slug: record.slug,
+    name: record.name,
+    description: record.description,
+    icon: resolveIpfsUrl(record.icon),
+    color: record.color,
+    chainIds: parseStringArray(record.chainIds),
+    tokenIds: parseStringArray(record.tokenIds),
+    governorIds: parseStringArray(record.governorIds),
+    hasActiveProposals: record.hasActiveProposals,
+    proposalsCount: record.proposalsCount,
+    delegatesCount: record.delegatesCount,
+    delegatesVotesCount: record.delegatesVotesCount != null ? Number(record.delegatesVotesCount) : null,
+    tokenOwnersCount: record.tokenOwnersCount,
+    profileUrl: getTallyOrganizationUrl(record.slug),
+    syncedAt: record.syncedAt.toISOString(),
+  };
+}
+
+function mapTallyProposal(record: TallyProposalRecord): TallyProposal {
+  return {
+    id: record.id,
+    onchainId: record.onchainId,
+    organizationId: record.organizationId,
+    organizationSlug: record.organizationSlug,
+    organizationName: record.organizationName,
+    governorId: record.governorId,
+    governorSlug: record.governorSlug,
+    governorName: record.governorName,
+    chainId: record.chainId,
+    status: record.status,
+    title: record.title,
+    description: record.description,
+    proposerAddress: record.proposerAddress,
+    creatorAddress: record.creatorAddress,
+    quorum: record.quorum != null ? Number(record.quorum) : null,
+    startsAt: record.startAt?.toISOString() ?? null,
+    endsAt: record.endAt?.toISOString() ?? null,
+    sourceCreatedAt: record.sourceCreatedAt?.toISOString() ?? null,
+    voteStats: record.voteStats,
+    metadata: record.metadata,
+    proposalUrl: getTallyProposalUrl(record.organizationSlug, record.id),
+    syncedAt: record.syncedAt.toISOString(),
+  };
+}
+
 function emptyPlatformStats(): PlatformStats {
   return {
     spacesCount: 0,
@@ -837,6 +1066,13 @@ function normalizeTranslationLocale(value: string | null | undefined) {
   return normalized;
 }
 
+function normalizeTallySyncEntityType(value: string) {
+  if (value.startsWith("tally:")) return value;
+  if (value === "organizations") return GOVERNANCE_SOURCES.tally.spaceEntityType;
+  if (value === "proposals") return GOVERNANCE_SOURCES.tally.proposalEntityType;
+  return `tally:${value}`;
+}
+
 function excerpt(text: string, length: number) {
   if (!text) return "";
   return text.length <= length ? text : `${text.slice(0, length - 3).trimEnd()}...`;
@@ -862,6 +1098,18 @@ function getSnapshotProposalUrl(spaceId: string, proposalId: string) {
 
 function getSnapshotProfileUrl(address: string) {
   return `https://snapshot.org/#/profile/${encodeURIComponent(address)}`;
+}
+
+function getTallyOrganizationUrl(slug: string) {
+  return `https://www.tally.xyz/gov/${encodeURIComponent(slug)}`;
+}
+
+function getTallyProposalUrl(organizationSlug: string | null, proposalId: string) {
+  if (!organizationSlug) {
+    return `https://www.tally.xyz/proposals/${encodeURIComponent(proposalId)}`;
+  }
+
+  return `https://www.tally.xyz/gov/${encodeURIComponent(organizationSlug)}/proposal/${encodeURIComponent(proposalId)}`;
 }
 
 function applyProposalFilters(items: Proposal[], query: ProposalFilters) {

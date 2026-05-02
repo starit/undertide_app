@@ -4,6 +4,7 @@ import { getMessages } from "next-intl/server";
 import "./globals.css";
 import { PageShell } from "@/components/page-shell";
 import { StoreProvider } from "@/store/provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { getServerLocale } from "@/lib/i18n-server";
 
 export const metadata: Metadata = {
@@ -71,13 +72,15 @@ export default async function RootLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
       <body>
-        <NextIntlClientProvider locale={locale} messages={messages}>
-          <StoreProvider>
-            <PageShell>{children}</PageShell>
-          </StoreProvider>
-        </NextIntlClientProvider>
+        <ThemeProvider>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <StoreProvider>
+              <PageShell>{children}</PageShell>
+            </StoreProvider>
+          </NextIntlClientProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

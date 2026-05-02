@@ -11,6 +11,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const snapshotSpaces = pgTable(
@@ -174,6 +175,85 @@ export const snapshotSyncRuns = pgTable(
   })
 );
 
+export const tallyOrganizations = pgTable(
+  "tally_organizations",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    icon: text("icon"),
+    color: text("color"),
+    chainIds: jsonb("chain_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    tokenIds: jsonb("token_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    governorIds: jsonb("governor_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    hasActiveProposals: boolean("has_active_proposals").notNull().default(false),
+    proposalsCount: integer("proposals_count").notNull().default(0),
+    delegatesCount: integer("delegates_count").notNull().default(0),
+    delegatesVotesCount: numeric("delegates_votes_count"),
+    tokenOwnersCount: integer("token_owners_count").notNull().default(0),
+    raw: jsonb("raw").$type<Record<string, unknown>>().notNull(),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("idx_tally_organizations_slug").on(table.slug),
+    hasActiveProposalsIdx: index("idx_tally_organizations_has_active_proposals").on(table.hasActiveProposals),
+    proposalsCountIdx: index("idx_tally_organizations_proposals_count").on(table.proposalsCount),
+    syncedAtIdx: index("idx_tally_organizations_synced_at").on(table.syncedAt),
+  })
+);
+
+export const tallyProposals = pgTable(
+  "tally_proposals",
+  {
+    id: text("id").primaryKey(),
+    onchainId: text("onchain_id"),
+    organizationId: text("organization_id").notNull(),
+    organizationSlug: text("organization_slug"),
+    organizationName: text("organization_name"),
+    governorId: text("governor_id"),
+    governorSlug: text("governor_slug"),
+    governorName: text("governor_name"),
+    chainId: text("chain_id"),
+    status: text("status").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    proposerAddress: text("proposer_address"),
+    creatorAddress: text("creator_address"),
+    quorum: numeric("quorum"),
+    startTs: bigint("start_ts", { mode: "number" }),
+    endTs: bigint("end_ts", { mode: "number" }),
+    createdTs: bigint("created_ts", { mode: "number" }),
+    startAt: timestamp("start_at", { withTimezone: true }).generatedAlwaysAs(
+      sql`case when start_ts is null then null else to_timestamp(start_ts) end`
+    ),
+    endAt: timestamp("end_at", { withTimezone: true }).generatedAlwaysAs(
+      sql`case when end_ts is null then null else to_timestamp(end_ts) end`
+    ),
+    sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }).generatedAlwaysAs(
+      sql`case when created_ts is null then null else to_timestamp(created_ts) end`
+    ),
+    voteStats: jsonb("vote_stats").$type<unknown[] | null>(),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    raw: jsonb("raw").$type<Record<string, unknown>>().notNull(),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationIdIdx: index("idx_tally_proposals_organization_id").on(table.organizationId),
+    organizationSlugIdx: index("idx_tally_proposals_organization_slug").on(table.organizationSlug),
+    governorIdIdx: index("idx_tally_proposals_governor_id").on(table.governorId),
+    chainIdIdx: index("idx_tally_proposals_chain_id").on(table.chainId),
+    statusIdx: index("idx_tally_proposals_status").on(table.status),
+    sourceCreatedAtIdx: index("idx_tally_proposals_source_created_at").on(table.sourceCreatedAt),
+    endAtIdx: index("idx_tally_proposals_end_at").on(table.endAt),
+    syncedAtIdx: index("idx_tally_proposals_synced_at").on(table.syncedAt),
+  })
+);
+
 export const schema = {
   snapshotSpaces,
   snapshotSpaceMembers,
@@ -181,4 +261,6 @@ export const schema = {
   proposalTranslations,
   snapshotSyncState,
   snapshotSyncRuns,
+  tallyOrganizations,
+  tallyProposals,
 };

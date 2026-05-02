@@ -18,9 +18,11 @@ const LOAD_MORE_STEP = 12;
 export function ProposalsBrowser({
   proposals,
   initialSpaceSlug,
+  totalProposalsCount,
 }: {
   proposals: Proposal[];
   initialSpaceSlug?: string;
+  totalProposalsCount?: number;
 }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.proposalView);
@@ -73,7 +75,7 @@ export function ProposalsBrowser({
       setIsLoading(true);
 
       try {
-        const response = await fetch(`/api/proposals?${searchParams.toString()}`, {
+        const response = await fetch(`/api/snapshot/proposals?${searchParams.toString()}`, {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -172,9 +174,12 @@ export function ProposalsBrowser({
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          {isLoading ? tProposals("searching") : tProposals("loaded", { count: results.length })}
-        </span>
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          {typeof totalProposalsCount === "number" ? (
+            <span>{tProposals("supportedProposals", { count: totalProposalsCount })}</span>
+          ) : null}
+          <span>{isLoading ? tProposals("searching") : tProposals("loaded", { count: results.length })}</span>
+        </div>
       </div>
 
       <div className={view === "grid" ? "grid gap-4 md:gap-6 lg:grid-cols-2" : "grid gap-4 md:gap-6"}>

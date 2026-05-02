@@ -1,6 +1,6 @@
 # UnderTide App v2
 
-UnderTide is a Next.js app for Web3 governance intelligence. It syncs governance data from Snapshot into Postgres, exposes API endpoints, and provides a multilingual UI focused on AI/Agent-friendly context.
+UnderTide is a Next.js app for Web3 governance intelligence. It syncs governance data from Snapshot and Tally into Postgres, exposes API endpoints, and provides a multilingual UI focused on AI/Agent-friendly context.
 
 ## Quick Start
 
@@ -28,6 +28,7 @@ App will be available at `http://localhost:3000`.
 
 - `DATABASE_URL` or `DATABASE_URL_UNPOOLED`
 - `DEEPSEEK_API_KEY` (only needed for translation scripts)
+- `TALLY_API_KEY` (only needed for Tally governance sync)
 
 ## Common Commands
 
@@ -36,12 +37,16 @@ App will be available at `http://localhost:3000`.
 - `pnpm build` - production build
 - `pnpm sync:snapshot` - incremental sync from Snapshot
 - `pnpm sync:snapshot:full` - full sync from scratch
+- `pnpm sync:tally` - sync Tally governance organizations and recent proposals
+- `pnpm sync:tally:full` - full Tally proposal sync for selected organizations
 - `pnpm translate:proposals` - translate proposals (`zh/ja/ko`) into `proposal_translations`
 
 ## API Notes
 
-- `GET /api/proposals` supports `locale=<zh|ja|ko>` for translated overlays.
-- `GET /api/proposals` also supports `translatedOnly=true` (effective when `locale != en`) to return only proposals that already have translations for that locale.
+- Source-specific APIs are available under `/api/snapshot/*` and `/api/tally/*`; see [`docs/1. governance-aggregation-api.md`](docs/1.%20governance-aggregation-api.md).
+- `GET /api/sources` returns source capability metadata; `GET /api/sync` returns grouped Snapshot/Tally sync state.
+- `GET /api/snapshot/proposals` supports `locale=<zh|ja|ko>` and `translatedOnly=true`.
+- Legacy `/api/spaces` and `/api/proposals` remain Snapshot-compatible during migration.
 
 ## Translation Notes
 

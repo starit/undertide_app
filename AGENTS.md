@@ -6,7 +6,7 @@ Developer reference for AI agents and contributors working in this repository.
 
 ## Project Overview
 
-**undertide-app-v2** is a Next.js 15 application that syncs governance data from [Snapshot](https://snapshot.org) into a Neon (PostgreSQL) database and exposes it via a REST API. The frontend surfaces DAO spaces and proposals with enrichment, translation, and filtering.
+**undertide-app-v2** is a Next.js 15 application that syncs governance data from [Snapshot](https://snapshot.org) and Tally into a Neon (PostgreSQL) database and exposes it via a REST API. The frontend surfaces DAO spaces and proposals with enrichment, translation, and filtering.
 
 **Stack:** Next.js 15 · React 19 · TypeScript · Drizzle ORM · Neon (serverless Postgres) · Tailwind CSS · Radix UI
 
@@ -26,13 +26,16 @@ Developer reference for AI agents and contributors working in this repository.
 │   ├── drizzle-schema.ts       # Single source of truth for DB schema
 │   └── migrations/drizzle/     # Drizzle migration files + meta snapshots
 ├── docs/
-│   └── 0. references-snapshot-schema.md  # Snapshot GraphQL schema reference
+│   ├── 0. references-snapshot-schema.md  # Snapshot GraphQL schema reference
+│   └── 1. governance-aggregation-api.md  # Planned multi-source aggregate API design
 ├── examples/                   # Benchmark scripts
 ├── lib/
 │   ├── db.ts                   # Drizzle client setup
+│   ├── governance/             # Source descriptors and future aggregate API helpers
 │   ├── i18n.ts                 # Shared UI message dictionary and locale helpers
 │   ├── i18n-server.ts          # Server-only locale resolution from cookie
 │   ├── repository.ts           # All DB queries and data mapping
+│   ├── tally/                  # Tally GraphQL client
 │   └── types.ts                # Shared TypeScript interfaces
 ├── i18n/
 │   └── request.ts              # next-intl request config
@@ -52,6 +55,8 @@ Developer reference for AI agents and contributors working in this repository.
 | `DEEPSEEK_API_KEY` | For translation only | DeepSeek API key |
 | `DEEPSEEK_BASE_URL` | No | DeepSeek base URL (default: `https://api.deepseek.com`) |
 | `DEEPSEEK_MODEL` | No | DeepSeek model ID (default: `deepseek-chat`) |
+| `TALLY_API_KEY` | For Tally sync only | Tally governance API key |
+| `TALLY_API_URL` | No | Tally GraphQL endpoint (default: `https://api.tally.xyz/query`) |
 
 `DATABASE_URL_UNPOOLED` is preferred over `DATABASE_URL` for all scripts and migrations because pooled pgBouncer connections cause DDL hangs with drizzle-kit.
 
@@ -74,6 +79,8 @@ Copy `.env.example` to `.env` to get started.
 | `db:check` | `drizzle-kit check --config drizzle.config.ts` |
 | `sync:snapshot` | `npx tsx scripts/sync-snapshot.ts` |
 | `sync:snapshot:full` | `npx tsx scripts/sync-snapshot.ts --full` |
+| `sync:tally` | `npx tsx scripts/sync-tally.ts` |
+| `sync:tally:full` | `npx tsx scripts/sync-tally.ts --full` |
 | `backfill:space-proposal-count` | `npx tsx scripts/backfill-space-proposal-count.ts` |
 | `backfill:space-avatar` | `npx tsx scripts/backfill-space-avatar.ts` |
 | `translate:proposals` | `npx tsx scripts/translate-proposals.ts` |
@@ -86,7 +93,7 @@ Copy `.env.example` to `.env` to get started.
 
 **Source of truth: [`db/drizzle-schema.ts`](db/drizzle-schema.ts)** — read that file directly for column names, types, and constraints. Do not duplicate it here.
 
-6 tables: `snapshot_spaces`, `snapshot_space_members`, `snapshot_proposals`, `proposal_translations`, `snapshot_sync_state`, `snapshot_sync_runs`.
+8 tables: `snapshot_spaces`, `snapshot_space_members`, `snapshot_proposals`, `proposal_translations`, `snapshot_sync_state`, `snapshot_sync_runs`, `tally_organizations`, `tally_proposals`.
 
 Notable conventions:
 - All tables have `created_at` and `updated_at` (`timestamptz NOT NULL DEFAULT now()`), set on insert and upsert respectively
@@ -94,6 +101,17 @@ Notable conventions:
 - `snapshot_proposals.synced_at` is the DB-managed sync timestamp (distinct from the Snapshot-derived `updated_at`)
 - `avatar` on spaces may be an `ipfs://` URL — resolve with `resolveIpfsUrl()` in `lib/repository.ts`
 - `raw` (jsonb, NOT NULL) on both `snapshot_spaces` and `snapshot_proposals` stores the full Snapshot API response
+- `raw` (jsonb, NOT NULL) on `tally_organizations` and `tally_proposals` stores the full Tally API response
+- `tally_proposals.source_created_at`, `start_at`, and `end_at` are generated columns derived from Unix-second bigint fields — do not write to them directly
+
+### Source and aggregation conventions
+
+- Keep source-specific ingest tables separate (`snapshot_*`, `tally_*`) until aggregate query patterns justify materialized views or aggregate tables
+- Public aggregate IDs must be source-scoped: `snapshot:<id>` or `tally:<id>`
+- Source descriptors live in `lib/governance/sources.ts`
+- The planned aggregate API contract lives in `docs/1. governance-aggregation-api.md`
+- Use `/api/snapshot/*` and `/api/tally/*` for source-specific APIs
+- Do not change existing `/api/spaces` or `/api/proposals` response shapes while adding source-specific or aggregate routes
 
 ---
 
@@ -181,6 +199,41 @@ npx tsx scripts/sync-snapshot.ts --spaces-skip 5000
 - Proposals: ordered by `created` descending; stops when it sees a proposal with `created_ts ≤ last_created_ts`
 
 After syncing proposals, `proposal_count` is recomputed for all touched spaces from actual row counts.
+
+---
+
+### `scripts/sync-tally.ts`
+
+Syncs Tally governance organizations and proposals from the Tally GraphQL API (`https://api.tally.xyz/query`) into the database.
+
+```bash
+# Sync organizations and recent proposals
+pnpm sync:tally
+
+# Full proposal sync for selected organizations
+pnpm sync:tally:full --organization-slug uniswap
+
+# Sync only one entity type
+npx tsx scripts/sync-tally.ts --organizations-only
+npx tsx scripts/sync-tally.ts --proposals-only
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--full` | Do not resume organization cursor; remove the default per-organization proposal cap |
+| `--organizations-only` | Skip proposal sync |
+| `--proposals-only` | Skip organization sync and use existing `tally_organizations` rows |
+| `--organization-id <id>` | Restrict work to one Tally organization ID (repeatable) |
+| `--organization-slug <slug>` | Restrict work to one Tally organization slug (repeatable) |
+| `--limit-organizations <n>` | Max organizations to fetch |
+| `--limit-proposals <n>` | Max proposals per organization unless `--full` is used |
+| `--proposal-organization-limit <n>` | Max stored organizations scanned for proposal sync without explicit filters |
+
+**Sync state entity types:**
+- Organizations: `tally:organizations`
+- Proposals: `tally:proposals`
 
 ---
 
@@ -327,7 +380,21 @@ Returns database connection status.
 
 ---
 
-### `GET /api/spaces`
+### `GET /api/sources`
+
+Returns source capability metadata for Snapshot and Tally.
+
+---
+
+### `GET /api/sync`
+
+Returns grouped Snapshot and Tally sync state.
+
+---
+
+### Legacy `GET /api/spaces`
+
+Snapshot-compatible alias. Prefer `GET /api/snapshot/spaces` for new source-specific clients.
 
 | Param | Type | Description |
 |---|---|---|
@@ -341,13 +408,13 @@ Returns: `{ data: Space[] }`
 
 ---
 
-### `GET /api/spaces/[slug]`
+### Legacy `GET /api/spaces/[slug]`
 
 Returns: `{ data: Space }` or 404.
 
 ---
 
-### `GET /api/spaces/[slug]/proposals`
+### Legacy `GET /api/spaces/[slug]/proposals`
 
 | Param | Type | Description |
 |---|---|---|
@@ -360,9 +427,9 @@ Returns: `{ data: Proposal[] }`
 
 ---
 
-### `GET /api/proposals`
+### Legacy `GET /api/proposals`
 
-Same params as `/api/spaces/[slug]/proposals`, plus:
+Snapshot-compatible alias. Prefer `GET /api/snapshot/proposals` for new source-specific clients. Same params as `/api/spaces/[slug]/proposals`, plus:
 
 | Param | Type | Description |
 |---|---|---|
@@ -374,7 +441,7 @@ Returns: `{ data: Proposal[] }`
 
 ---
 
-### `GET /api/proposals/[id]`
+### Legacy `GET /api/proposals/[id]`
 
 | Param | Type | Description |
 |---|---|---|
@@ -384,7 +451,7 @@ Returns: `{ data: ProposalDetail }` or 404.
 
 ---
 
-### `GET /api/proposals/[id]/translations`
+### Legacy `GET /api/proposals/[id]/translations`
 
 | Param | Type | Description |
 |---|---|---|
@@ -394,13 +461,59 @@ Returns: `{ data: ProposalTranslation[] }` or 404 if specific locale not found.
 
 ---
 
-### `GET /api/sync/snapshot`
+### Legacy `GET /api/sync/snapshot`
 
 | Param | Type | Description |
 |---|---|---|
 | `entityType` | `string` (repeatable) | Filter to `"spaces"` or `"proposals"` |
 
 Returns: `{ data: SnapshotSyncState[] }`
+
+---
+
+### Legacy `GET /api/sync/tally`
+
+| Param | Type | Description |
+|---|---|---|
+| `entityType` | `string` (repeatable) | Filter to `"organizations"`, `"proposals"`, `"tally:organizations"`, or `"tally:proposals"` |
+
+Returns: `{ data: SnapshotSyncState[] }`
+
+---
+
+### Source-specific APIs
+
+Snapshot-compatible source routes:
+
+```txt
+GET /api/snapshot/spaces
+GET /api/snapshot/spaces/[slug]
+GET /api/snapshot/spaces/[slug]/proposals
+GET /api/snapshot/proposals
+GET /api/snapshot/proposals/[id]
+GET /api/snapshot/proposals/[id]/translations
+GET /api/snapshot/sync
+```
+
+Tally source routes:
+
+```txt
+GET /api/tally/organizations
+GET /api/tally/organizations/[idOrSlug]
+GET /api/tally/organizations/[idOrSlug]/proposals
+GET /api/tally/proposals
+GET /api/tally/proposals/[id]
+GET /api/tally/sync
+```
+
+### Planned aggregate APIs
+
+The multi-source aggregate API is planned but not fully implemented. `GET /api/sources` and `GET /api/sync` are available as discovery/status endpoints. Use `docs/1. governance-aggregation-api.md` as the contract source before adding or changing `/api/protocols`, `/api/venues`, or aggregate `/api/proposals`.
+
+Rules:
+- All aggregate entities must expose `source`, `sourceId`, and source-scoped `uid`
+- Do not break existing `/api/spaces` or `/api/proposals` while adding aggregate routes
+- Keep Snapshot translation overlay behavior source-aware; current `proposal_translations` rows are Snapshot-scoped
 
 ---
 

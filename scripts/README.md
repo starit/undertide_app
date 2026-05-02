@@ -2,6 +2,55 @@
 
 This directory contains operational scripts for sync, backfill, migration, and translation tasks.
 
+## Tally Sync (`sync-tally.ts`)
+
+Script path: [`sync-tally.ts`](./sync-tally.ts).  
+pnpm shortcut: **`pnpm sync:tally`** → `npx tsx scripts/sync-tally.ts`.
+
+Writes Tally governance data into raw source tables:
+
+- `tally_organizations`
+- `tally_proposals`
+
+The script uses Tally governance GraphQL at `https://api.tally.xyz/query` by default. It records progress in the existing sync-state tables with source-scoped entity types: `tally:organizations` and `tally:proposals`. This keeps the current Snapshot API untouched while leaving a stable source dimension for the future aggregate governance API.
+
+The planned aggregate API contract is documented in [`docs/1. governance-aggregation-api.md`](../docs/1.%20governance-aggregation-api.md).
+
+### Common commands
+
+```bash
+pnpm sync:tally
+pnpm sync:tally --organizations-only --limit-organizations 200
+pnpm sync:tally --organization-slug uniswap --limit-proposals 100
+pnpm sync:tally:full --organization-slug uniswap
+```
+
+### CLI flags
+
+| Flag | Description |
+| --- | --- |
+| `--full` | Do not resume organization cursor; remove the default per-organization proposal cap. |
+| `--organizations-only` | Sync Tally organizations only. |
+| `--proposals-only` | Sync Tally proposals only, using organizations already present in `tally_organizations`. |
+| `--organization-id <id>` | Restrict organization/proposal work to a specific Tally organization id. Repeatable. |
+| `--organization-slug <slug>` | Restrict organization/proposal work to a specific Tally organization slug. Repeatable. |
+| `--limit-organizations <n>` | Max organizations to fetch from Tally in this run. |
+| `--limit-proposals <n>` | Max proposals per organization unless `--full` is used. |
+| `--proposal-organization-limit <n>` | Max stored organizations to scan for proposal sync when no explicit organization filter is provided. |
+
+### Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TALLY_API_KEY` | Required | Tally API key. |
+| `TALLY_API_URL` | `https://api.tally.xyz/query` | Override Tally GraphQL endpoint. |
+| `TALLY_PAGE_SIZE` | `20` | GraphQL page size, capped at 20. |
+| `TALLY_ORGANIZATION_LIMIT` | `100` | Default organization fetch cap. |
+| `TALLY_PROPOSALS_PER_ORGANIZATION` | `20` | Default proposal cap per organization. |
+| `TALLY_PROPOSAL_ORGANIZATION_LIMIT` | `50` | Default number of stored organizations scanned for proposals. |
+| `DATABASE_URL_UNPOOLED` | Required | Preferred for scripts. |
+| `DATABASE_URL` | Fallback | Used if unpooled is unset. |
+
 ## Translate Proposals (`translate-proposals.ts`)
 
 Script path: [`translate-proposals.ts`](./translate-proposals.ts).  

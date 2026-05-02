@@ -71,7 +71,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
       setIsLoading(true);
 
       try {
-        const response = await fetch(`/api/spaces?${searchParams.toString()}`, {
+        const response = await fetch(`/api/snapshot/spaces?${searchParams.toString()}`, {
           signal: controller.signal,
           cache: "no-store",
         });

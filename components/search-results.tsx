@@ -11,7 +11,17 @@ import { Input } from "@/components/ui/input";
 const DEFAULT_SEARCH_LIMIT = 6;
 const LOAD_MORE_STEP = 4;
 
-export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; spaces: Space[] }) {
+export function SearchResults({
+  proposals,
+  spaces,
+  totalProposalsCount,
+  totalSpacesCount,
+}: {
+  proposals: Proposal[];
+  spaces: Space[];
+  totalProposalsCount?: number;
+  totalSpacesCount?: number;
+}) {
   const locale = useLocale();
   const tSearch = useTranslations("search");
   const [query, setQuery] = useState("");
@@ -49,11 +59,11 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
 
       try {
         const [proposalsResponse, spacesResponse] = await Promise.all([
-          fetch(`/api/proposals?${searchParams.toString()}`, {
+          fetch(`/api/snapshot/proposals?${searchParams.toString()}`, {
             signal: controller.signal,
             cache: "no-store",
           }),
-          fetch(`/api/spaces?${searchParams.toString()}`, {
+          fetch(`/api/snapshot/spaces?${searchParams.toString()}`, {
             signal: controller.signal,
             cache: "no-store",
           }),
@@ -97,13 +107,23 @@ export function SearchResults({ proposals, spaces }: { proposals: Proposal[]; sp
         <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tSearch("placeholder")} />
       </div>
 
-      <div className="text-sm text-muted-foreground">
-        {isLoading
-          ? tSearch("searching")
-          : tSearch("loaded", {
-              proposals: results.proposals.length,
-              spaces: results.spaces.length,
+      <div className="flex flex-col gap-1 text-sm text-muted-foreground md:flex-row md:items-center md:gap-3">
+        {typeof totalProposalsCount === "number" && typeof totalSpacesCount === "number" ? (
+          <span>
+            {tSearch("supportedResults", {
+              proposals: totalProposalsCount,
+              spaces: totalSpacesCount,
             })}
+          </span>
+        ) : null}
+        <span>
+          {isLoading
+            ? tSearch("searching")
+            : tSearch("loaded", {
+                proposals: results.proposals.length,
+                spaces: results.spaces.length,
+              })}
+        </span>
       </div>
 
       <section className="flex flex-col gap-6">

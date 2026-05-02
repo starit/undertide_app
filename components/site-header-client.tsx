@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Waves, X } from "lucide-react";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +64,7 @@ export function SiteHeaderClient({
               );
             })}
           </nav>
+          <ThemeSwitcher />
           <LocaleSwitcher />
         </div>
         <Button
@@ -99,6 +101,7 @@ export function SiteHeaderClient({
               );
             })}
           </nav>
+          <ThemeSwitcher />
           <LocaleSwitcher />
         </div>
       )}

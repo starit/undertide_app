@@ -82,6 +82,50 @@ export interface SnapshotSyncState {
   } | null;
 }
 
+export interface TallyOrganization {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  chainIds: string[];
+  tokenIds: string[];
+  governorIds: string[];
+  hasActiveProposals: boolean;
+  proposalsCount: number;
+  delegatesCount: number;
+  delegatesVotesCount: number | null;
+  tokenOwnersCount: number;
+  profileUrl: string;
+  syncedAt: string;
+}
+
+export interface TallyProposal {
+  id: string;
+  onchainId: string | null;
+  organizationId: string;
+  organizationSlug: string | null;
+  organizationName: string | null;
+  governorId: string | null;
+  governorSlug: string | null;
+  governorName: string | null;
+  chainId: string | null;
+  status: string;
+  title: string;
+  description: string | null;
+  proposerAddress: string | null;
+  creatorAddress: string | null;
+  quorum: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  sourceCreatedAt: string | null;
+  voteStats: unknown[] | null;
+  metadata: Record<string, unknown> | null;
+  proposalUrl: string;
+  syncedAt: string;
+}
+
 export interface PlatformStats {
   spacesCount: number;
   verifiedSpacesCount: number;
