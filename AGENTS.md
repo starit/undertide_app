@@ -10,6 +10,8 @@ Developer reference for AI agents and contributors working in this repository.
 
 **Stack:** Next.js 15 · React 19 · TypeScript · Drizzle ORM · Neon (serverless Postgres) · Tailwind CSS · Radix UI
 
+**Theming:** CSS variables in `app/globals.css`, `next-themes`, and Tailwind — see [`docs/2. themes.md`](docs/2.%20themes.md) for how to add a theme.
+
 ---
 
 ## Repository Layout
@@ -27,7 +29,8 @@ Developer reference for AI agents and contributors working in this repository.
 │   └── migrations/drizzle/     # Drizzle migration files + meta snapshots
 ├── docs/
 │   ├── 0. references-snapshot-schema.md  # Snapshot GraphQL schema reference
-│   └── 1. governance-aggregation-api.md  # Planned multi-source aggregate API design
+│   ├── 1. governance-aggregation-api.md  # Planned multi-source aggregate API design
+│   └── 2. themes.md                      # How to add UI themes (CSS variables + next-themes)
 ├── examples/                   # Benchmark scripts
 ├── lib/
 │   ├── db.ts                   # Drizzle client setup
@@ -508,7 +511,7 @@ GET /api/tally/sync
 
 ### Planned aggregate APIs
 
-The multi-source aggregate API is planned but not fully implemented. `GET /api/sources` and `GET /api/sync` are available as discovery/status endpoints. Use `docs/1. governance-aggregation-api.md` as the contract source before adding or changing `/api/protocols`, `/api/venues`, or aggregate `/api/proposals`.
+The multi-source aggregate API is planned but not fully implemented. `GET /api/sources` and `GET /api/sync` are available as discovery/status endpoints. Use `docs/1. governance-aggregation-api.md` as the contract source before adding or changing `/api/protocols`, `/api/protocols/[id]/sources`, `/api/protocols/[id]/proposals`, or aggregate `/api/proposals`.
 
 Rules:
 - All aggregate entities must expose `source`, `sourceId`, and source-scoped `uid`

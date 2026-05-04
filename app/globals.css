@@ -91,6 +91,118 @@
   --avatar-gradient-light-a: 28%;
   --avatar-gradient-sat-accent: 55%;
   --avatar-gradient-light-b: 38%;
+
+  color-scheme: light;
+}
+
+/* Default app theme (next-themes value: light) — tokens live on :root above. */
+
+.dark {
+  color-scheme: dark;
+  --background: 220 20% 10%;
+  --foreground: 45 20% 96%;
+  --card: 220 18% 13%;
+  --card-foreground: 45 20% 96%;
+  --popover: 220 18% 12%;
+  --popover-foreground: 45 20% 96%;
+  --primary: 158 50% 42%;
+  --primary-hover: 158 52% 48%;
+  --primary-foreground: 220 22% 8%;
+  --secondary: 220 12% 22%;
+  --secondary-foreground: 45 18% 92%;
+  --muted: 220 12% 18%;
+  --muted-foreground: 215 12% 62%;
+  --accent: 28 55% 48%;
+  --accent-foreground: 220 22% 8%;
+  --destructive: 0 62% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 12% 22%;
+  --input: 220 12% 22%;
+  --ring: 158 50% 42%;
+  --brand: 158 50% 42%;
+  --brand-foreground: 220 22% 8%;
+  --brand-muted: 220 14% 20%;
+  --info: 217 85% 60%;
+  --info-foreground: 220 22% 8%;
+  --warning: 32 75% 48%;
+  --warning-foreground: 220 22% 8%;
+
+  --page-radial-accent: 158 30% 25%;
+  --page-linear-highlight: 220 20% 35%;
+  --selection-highlight: var(--primary);
+
+  --code-background: 222 35% 8%;
+  --code-border: 220 20% 18%;
+  --code-header-background: 222 30% 11%;
+  --code-header-foreground: 215 14% 58%;
+  --code-foreground: 214 28% 92%;
+  --syntax-comment: 215 14% 50%;
+  --syntax-keyword: 275 70% 72%;
+  --syntax-string: 158 55% 48%;
+  --syntax-function: 213 80% 68%;
+  --syntax-number: 38 88% 55%;
+
+  --shadow-color: 220 25% 5%;
+  --grid-line: var(--foreground);
+
+  --avatar-gradient-sat: 42%;
+  --avatar-gradient-light-a: 36%;
+  --avatar-gradient-sat-accent: 50%;
+  --avatar-gradient-light-b: 46%;
+}
+
+.sepia {
+  color-scheme: light;
+  --background: 40 32% 88%;
+  --foreground: 25 35% 14%;
+  --card: 38 28% 91%;
+  --card-foreground: 25 35% 14%;
+  --popover: 38 28% 91%;
+  --popover-foreground: 25 35% 14%;
+  --primary: 25 42% 22%;
+  --primary-hover: 25 44% 26%;
+  --primary-foreground: 40 35% 92%;
+  --secondary: 32 28% 72%;
+  --secondary-foreground: 25 35% 14%;
+  --muted: 35 22% 80%;
+  --muted-foreground: 28 18% 32%;
+  --accent: 18 65% 34%;
+  --accent-foreground: 40 35% 95%;
+  --destructive: 5 65% 38%;
+  --destructive-foreground: 40 35% 97%;
+  --border: 32 22% 68%;
+  --input: 32 22% 68%;
+  --ring: 25 42% 22%;
+  --brand: 25 42% 22%;
+  --brand-foreground: 40 35% 92%;
+  --brand-muted: 35 26% 78%;
+  --info: 220 60% 42%;
+  --info-foreground: 40 35% 97%;
+  --warning: 28 70% 32%;
+  --warning-foreground: 40 35% 95%;
+
+  --page-radial-accent: 32 40% 72%;
+  --page-linear-highlight: 40 40% 98%;
+  --selection-highlight: var(--primary);
+
+  --code-background: 25 35% 14%;
+  --code-border: 25 28% 22%;
+  --code-header-background: 25 32% 18%;
+  --code-header-foreground: 35 18% 58%;
+  --code-foreground: 40 30% 92%;
+  --syntax-comment: 30 12% 52%;
+  --syntax-keyword: 280 55% 68%;
+  --syntax-string: 145 45% 40%;
+  --syntax-function: 220 55% 55%;
+  --syntax-number: 32 75% 42%;
+
+  --shadow-color: var(--foreground);
+  --grid-line: var(--foreground);
+
+  --avatar-gradient-sat: 38%;
+  --avatar-gradient-light-a: 30%;
+  --avatar-gradient-sat-accent: 48%;
+  --avatar-gradient-light-b: 40%;
 }
 
 * {

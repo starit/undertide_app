@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { BookOpen, Monitor, Moon, Sun } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -15,6 +15,7 @@ import {
 const themes = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
+  { value: "sepia", label: "Sepia", icon: BookOpen },
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
