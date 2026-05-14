@@ -254,6 +254,49 @@ export const tallyProposals = pgTable(
   })
 );
 
+export const governanceProtocols = pgTable(
+  "governance_protocols",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    categories: jsonb("categories").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    website: text("website"),
+    avatar: text("avatar"),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("idx_governance_protocols_slug").on(table.slug),
+    nameIdx: index("idx_governance_protocols_name").on(table.name),
+  })
+);
+
+export const governanceProtocolSources = pgTable(
+  "governance_protocol_sources",
+  {
+    protocolId: text("protocol_id").notNull(),
+    source: text("source").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceSlug: text("source_slug"),
+    sourceName: text("source_name"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    confidence: text("confidence").notNull(),
+    linkedBy: text("linked_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.protocolId, table.source, table.sourceId] }),
+    sourceRefIdx: uniqueIndex("idx_governance_protocol_sources_source_ref").on(table.source, table.sourceId),
+    protocolIdIdx: index("idx_governance_protocol_sources_protocol_id").on(table.protocolId),
+    sourceIdx: index("idx_governance_protocol_sources_source").on(table.source),
+  })
+);
+
 export const schema = {
   snapshotSpaces,
   snapshotSpaceMembers,
@@ -263,4 +306,6 @@ export const schema = {
   snapshotSyncRuns,
   tallyOrganizations,
   tallyProposals,
+  governanceProtocols,
+  governanceProtocolSources,
 };

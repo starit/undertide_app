@@ -17,7 +17,7 @@ export async function GET() {
         label: GOVERNANCE_SOURCES.snapshot.label,
         syncedAt: latestSuccessfulSync(snapshotStates),
         supports: {
-          protocols: false,
+          protocols: true,
           sourceObjects: true,
           proposals: true,
           votes: false,
@@ -31,7 +31,7 @@ export async function GET() {
         label: GOVERNANCE_SOURCES.tally.label,
         syncedAt: latestSuccessfulSync(tallyStates),
         supports: {
-          protocols: false,
+          protocols: true,
           sourceObjects: true,
           proposals: true,
           votes: true,

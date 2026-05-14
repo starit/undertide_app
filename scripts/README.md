@@ -2,6 +2,42 @@
 
 This directory contains operational scripts for sync, backfill, migration, and translation tasks.
 
+## Link Governance Protocols (`link-governance-protocols.ts`)
+
+Script path: [`link-governance-protocols.ts`](./link-governance-protocols.ts).  
+pnpm shortcut: **`pnpm link:protocols`** → `npx tsx scripts/link-governance-protocols.ts`.
+
+Reads already-synced Snapshot spaces and Tally organizations, then writes canonical protocol rows and source refs:
+
+- `governance_protocols`
+- `governance_protocol_sources`
+
+This script does not call external APIs. Run it after source sync.
+
+### Common commands
+
+```bash
+pnpm link:protocols --dry-run --limit 50
+pnpm link:protocols --min-proposals 1
+pnpm link:protocols --source snapshot --limit 1000
+pnpm link:protocols --source tally --limit 1000
+pnpm link:protocols --seed-file data/governance-protocol-sources.json
+pnpm link:protocols --skip-seed
+```
+
+### CLI flags
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Print proposed source links without writing rows. |
+| `--source <source>` | `snapshot`, `tally`, or `all` (default). |
+| `--limit <n>` | Max source rows per source. Default `5000`. |
+| `--min-proposals <n>` | Only link source objects with at least this many proposals. Default `0`. |
+| `--seed-file <path>` | Manual protocol source seed file. Default `data/governance-protocol-sources.json`. |
+| `--skip-seed` | Skip manual seed application and run automatic linking only. |
+
+Manual seed rows run before automatic linking. Automatically generated links preserve existing manual source refs instead of overwriting them.
+
 ## Tally Sync (`sync-tally.ts`)
 
 Script path: [`sync-tally.ts`](./sync-tally.ts).  
@@ -14,7 +50,7 @@ Writes Tally governance data into raw source tables:
 
 The script uses Tally governance GraphQL at `https://api.tally.xyz/query` by default. It records progress in the existing sync-state tables with source-scoped entity types: `tally:organizations` and `tally:proposals`. This keeps the current Snapshot API untouched while leaving a stable source dimension for the future aggregate governance API.
 
-The planned aggregate API contract is documented in [`docs/1. governance-aggregation-api.md`](../docs/1.%20governance-aggregation-api.md).
+The aggregate API contract is documented in [`docs/1. governance-aggregation-api.md`](../docs/1.%20governance-aggregation-api.md).
 
 ### Common commands
 

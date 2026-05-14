@@ -52,6 +52,8 @@ Use `db:push` only for rapid local iteration, not as the main production migrati
   - `snapshot_proposals`
   - `tally_organizations`
   - `tally_proposals`
+  - `governance_protocols`
+  - `governance_protocol_sources`
   - `snapshot_sync_state`
   - `snapshot_sync_runs`
 - Added a Snapshot sync script at `scripts/sync-snapshot.mjs`.
@@ -74,7 +76,11 @@ Use `db:push` only for rapid local iteration, not as the main production migrati
   - `npx tsx scripts/sync-tally.ts --organizations-only`
   - `npx tsx scripts/sync-tally.ts --proposals-only`
   - `npx tsx scripts/sync-tally.ts --organization-slug uniswap --limit-proposals 100`
-- Planned aggregate API design:
+- Protocol linking entrypoints:
+  - `pnpm link:protocols --dry-run --limit 50`
+  - `pnpm link:protocols --min-proposals 1`
+  - `pnpm link:protocols --seed-file data/governance-protocol-sources.json`
+- Aggregate API design:
   - `docs/1. governance-aggregation-api.md`
 - Proposal translation table:
   - `proposal_translations`
@@ -85,6 +91,10 @@ Use `db:push` only for rapid local iteration, not as the main production migrati
 - Database-backed API endpoints:
   - `GET /api/sources`
   - `GET /api/sync`
+  - `GET /api/protocols`
+  - `GET /api/protocols/:id`
+  - `GET /api/protocols/:id/sources`
+  - `GET /api/protocols/:id/proposals`
   - `GET /api/snapshot/spaces`
   - `GET /api/snapshot/spaces/:slug`
   - `GET /api/snapshot/spaces/:slug/proposals`

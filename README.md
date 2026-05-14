@@ -39,12 +39,15 @@ App will be available at `http://localhost:3000`.
 - `pnpm sync:snapshot:full` - full sync from scratch
 - `pnpm sync:tally` - sync Tally governance organizations and recent proposals
 - `pnpm sync:tally:full` - full Tally proposal sync for selected organizations
+- `pnpm link:protocols` - link Snapshot/Tally source objects into canonical protocols
+- `pnpm link:protocols --seed-file data/governance-protocol-sources.json` - apply manual protocol source seeds before automatic linking
 - `pnpm translate:proposals` - translate proposals (`zh/ja/ko`) into `proposal_translations`
 
 ## API Notes
 
 - Source-specific APIs are available under `/api/snapshot/*` and `/api/tally/*`; see [`docs/1. governance-aggregation-api.md`](docs/1.%20governance-aggregation-api.md).
 - `GET /api/sources` returns source capability metadata; `GET /api/sync` returns grouped Snapshot/Tally sync state.
+- `GET /api/protocols`, `GET /api/protocols/[id]/sources`, and `GET /api/protocols/[id]/proposals` read from canonical protocol links.
 - `GET /api/snapshot/proposals` supports `locale=<zh|ja|ko>` and `translatedOnly=true`.
 - Legacy `/api/spaces` and `/api/proposals` remain Snapshot-compatible during migration.
 

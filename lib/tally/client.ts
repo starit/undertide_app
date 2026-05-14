@@ -91,8 +91,16 @@ type TallyOrganizationInput = {
   slug?: string;
 };
 
+type TallyProposalsFilters = {
+  organizationId?: string | number;
+  governorId?: string;
+  includeArchived?: boolean;
+  isDraft?: boolean;
+  proposer?: string;
+};
+
 type TallyProposalsInput = {
-  filters?: Record<string, unknown>;
+  filters?: TallyProposalsFilters;
   sort?: Record<string, unknown>;
   page?: {
     limit?: number;

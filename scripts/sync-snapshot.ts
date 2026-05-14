@@ -79,24 +79,10 @@ async function runSync(entityType: string, task: () => Promise<number>) {
   }
 }
 
-async function syncSpaces() {
-  const previousState = options.full ? null : await getSyncState("spaces");
-  let skip = options.full ? 0 : options.spacesSkip ?? parseCursorSkip(previousState?.lastCursor);
-  let upserted = 0;
-  let memberSyncWarnings = 0;
-
-  while (true) {
-    const batch = await fetchGraphQL<{ spaces: SnapshotSpace[] }>(
-      `
-        query GetSpaces($first: Int!, $skip: Int!) {
-          spaces(
-            first: $first
-            skip: $skip
-            orderBy: "created"
-            orderDirection: asc
-          ) {
+const SPACE_LIST_SELECTION = `
             id
             name
+            created
             proposalsCount
             followersCount
             verified
@@ -117,7 +103,6 @@ async function syncSpaces() {
             network
             symbol
             strategies {
-              name
               network
               params
             }
@@ -127,17 +112,44 @@ async function syncSpaces() {
               minScore
               onlyMembers
             }
-            plugins
+            plugins`;
+
+async function fetchSpacePage(
+  first: number,
+  skip: number,
+  where: Record<string, unknown>
+): Promise<SnapshotSpace[]> {
+  const batch = await fetchGraphQL<{ spaces: SnapshotSpace[] }>(
+    `
+        query GetSpaces($first: Int!, $skip: Int!, $where: SpaceWhere) {
+          spaces(
+            first: $first
+            skip: $skip
+            where: $where
+            orderBy: "created"
+            orderDirection: asc
+          ) {
+${SPACE_LIST_SELECTION}
           }
         }
       `,
-      { first: SPACE_PAGE_SIZE, skip }
-    );
+    { first, skip, where }
+  );
+  return batch?.spaces ?? [];
+}
 
-    const spaces = batch?.spaces ?? [];
+async function runSpacesFullSync(startSkip: number): Promise<number> {
+  let skip = startSkip;
+  let upserted = 0;
+  let memberSyncWarnings = 0;
+  let maxSpaceCreated = 0;
+
+  while (true) {
+    const spaces = await fetchSpacePage(SPACE_PAGE_SIZE, skip, {});
     if (spaces.length === 0) break;
 
     for (const space of spaces) {
+      maxSpaceCreated = Math.max(maxSpaceCreated, Number(space.created ?? 0));
       await upsertSpace(space);
       const membersSynced = await syncSpaceMembersSafely(space.id, space.members ?? []);
       if (!membersSynced) {
@@ -150,13 +162,14 @@ async function syncSpaces() {
     await safelyUpsertSyncState("spaces", {
       last_cursor: String(skip),
     });
-    console.log(`[spaces] fetched ${skip}`);
+    console.log(`[spaces] full scan offset ${skip}`);
 
     if (spaces.length < SPACE_PAGE_SIZE) break;
   }
 
   await safelyUpsertSyncState("spaces", {
     last_cursor: null,
+    last_created_ts: maxSpaceCreated > 0 ? maxSpaceCreated : null,
   });
 
   if (memberSyncWarnings > 0) {
@@ -164,6 +177,77 @@ async function syncSpaces() {
   }
 
   return upserted;
+}
+
+async function runSpacesIncrementalSync(watermark: number): Promise<number> {
+  let skip = 0;
+  let upserted = 0;
+  let memberSyncWarnings = 0;
+  let maxSpaceCreated = watermark;
+
+  while (true) {
+    const spaces = await fetchSpacePage(SPACE_PAGE_SIZE, skip, { created_gt: watermark });
+    if (spaces.length === 0) break;
+
+    for (const space of spaces) {
+      maxSpaceCreated = Math.max(maxSpaceCreated, Number(space.created ?? 0));
+      await upsertSpace(space);
+      const membersSynced = await syncSpaceMembersSafely(space.id, space.members ?? []);
+      if (!membersSynced) {
+        memberSyncWarnings += 1;
+      }
+      upserted += 1;
+    }
+
+    skip += spaces.length;
+    console.log(`[spaces] incremental +${spaces.length} rows (page end offset ${skip})`);
+
+    if (spaces.length < SPACE_PAGE_SIZE) break;
+  }
+
+  await safelyUpsertSyncState("spaces", {
+    last_cursor: null,
+    last_created_ts: maxSpaceCreated > 0 ? maxSpaceCreated : null,
+  });
+
+  if (memberSyncWarnings > 0) {
+    console.warn(`[spaces] completed with ${memberSyncWarnings} member-sync warnings`);
+  }
+
+  return upserted;
+}
+
+async function syncSpaces() {
+  if (options.full) {
+    return runSpacesFullSync(0);
+  }
+
+  if (options.spacesSkip != null) {
+    return runSpacesFullSync(options.spacesSkip);
+  }
+
+  const previousState = await getSyncState("spaces");
+  const resumeSkip =
+    previousState?.lastCursor != null && previousState.lastCursor !== ""
+      ? parseCursorSkip(previousState.lastCursor)
+      : 0;
+
+  if (resumeSkip > 0) {
+    console.log(`[spaces] resuming full scan from skip=${resumeSkip}`);
+    return runSpacesFullSync(resumeSkip);
+  }
+
+  const createdWatermark =
+    previousState?.lastCreatedTs != null && Number(previousState.lastCreatedTs) > 0
+      ? Number(previousState.lastCreatedTs)
+      : null;
+
+  if (createdWatermark != null) {
+    console.log(`[spaces] incremental sync (created_gt=${createdWatermark})`);
+    return runSpacesIncrementalSync(createdWatermark);
+  }
+
+  return runSpacesFullSync(0);
 }
 
 async function syncProposals() {
@@ -219,7 +303,6 @@ async function syncProposals() {
             plugins
             network
             strategies {
-              name
               network
               params
             }
@@ -609,7 +692,13 @@ async function upsertSyncState(
   }
 ) {
   const previous = (await getSyncState(entityType)) ?? {};
-  const lastSuccessAt = normalizeDateValue(patch.last_success_at ?? previous.lastSuccessAt ?? null);
+  const lastSuccessAt = normalizeDateValue(
+    "last_success_at" in patch ? patch.last_success_at : (previous.lastSuccessAt ?? null)
+  );
+  const lastCursor = "last_cursor" in patch ? patch.last_cursor : (previous.lastCursor ?? null);
+  const lastCreatedTs =
+    "last_created_ts" in patch ? patch.last_created_ts : (previous.lastCreatedTs ?? null);
+  const lastError = "last_error" in patch ? patch.last_error : (previous.lastError ?? null);
 
   await withDatabaseRetry(`upsertSyncState(${entityType})`, async () => {
     await db
@@ -617,18 +706,18 @@ async function upsertSyncState(
       .values({
         entityType,
         lastSuccessAt,
-        lastCursor: patch.last_cursor ?? previous.lastCursor ?? null,
-        lastCreatedTs: patch.last_created_ts ?? previous.lastCreatedTs ?? null,
-        lastError: patch.last_error ?? null,
+        lastCursor,
+        lastCreatedTs,
+        lastError,
         updatedAt: drizzleSql`now()`,
       })
       .onConflictDoUpdate({
         target: snapshotSyncState.entityType,
         set: {
           lastSuccessAt,
-          lastCursor: patch.last_cursor ?? previous.lastCursor ?? null,
-          lastCreatedTs: patch.last_created_ts ?? previous.lastCreatedTs ?? null,
-          lastError: patch.last_error ?? null,
+          lastCursor,
+          lastCreatedTs,
+          lastError,
           updatedAt: drizzleSql`now()`,
         },
       });
@@ -678,6 +767,7 @@ type SnapshotStrategy = {
 type SnapshotSpace = {
   id: string;
   name?: string;
+  created?: number;
   proposalsCount?: number | null;
   followersCount?: number | null;
   verified?: boolean | null;

@@ -193,43 +193,41 @@ async function syncProposals() {
   let highestCreatedTs = 0;
 
   for (const organization of organizations) {
-    let cursor: string | null = null;
-    let fetchedForOrganization = 0;
+    const governorIds = normalizeGovernorIdList(organization.governorIds);
+    const orgBudget = { remaining: options.limitProposals };
 
-    while (fetchedForOrganization < options.limitProposals) {
-      const pageLimit = Math.min(TALLY_PAGE_SIZE, options.limitProposals - fetchedForOrganization);
-      const page = await tally.listProposals({
-        filters: {
-          organizationId: organization.id,
-        },
-        page: {
-          limit: pageLimit,
-          afterCursor: cursor,
-        },
-      });
+    if (governorIds.length > 0) {
+      for (const governorId of governorIds) {
+        if (orgBudget.remaining <= 0) break;
 
-      const proposals = page.nodes.filter(isTallyProposal);
-      if (proposals.length === 0) break;
-
-      for (const proposal of proposals) {
-        await upsertProposal(proposal, organization);
-        highestCreatedTs = Math.max(highestCreatedTs, normalizeTimestampToUnixSeconds(proposal.block) ?? 0);
-        upserted += 1;
+        try {
+          const batch = await syncProposalsForOrgWithFilters(organization, { governorId }, orgBudget);
+          upserted += batch.upserted;
+          highestCreatedTs = Math.max(highestCreatedTs, batch.highestCreatedTs);
+        } catch (error) {
+          if (isUnsupportedChainTallyError(error)) {
+            console.warn(
+              `[${TALLY_SOURCE.proposalEntityType}] ${organization.slug ?? organization.id}: skipping governor (unsupported chain): ${governorId}`
+            );
+            continue;
+          }
+          throw error;
+        }
       }
-
-      fetchedForOrganization += proposals.length;
-      cursor = page.pageInfo.lastCursor;
-      await safelyUpsertSyncState(TALLY_SOURCE.proposalEntityType, {
-        last_cursor: JSON.stringify({
-          organizationId: organization.id,
-          afterCursor: cursor,
-        }),
-      });
-      console.log(
-        `[${TALLY_SOURCE.proposalEntityType}] ${organization.slug ?? organization.id}: fetched ${fetchedForOrganization}`
-      );
-
-      if (!cursor || proposals.length < pageLimit) break;
+    } else {
+      try {
+        const batch = await syncProposalsForOrgWithFilters(organization, {}, orgBudget);
+        upserted += batch.upserted;
+        highestCreatedTs = Math.max(highestCreatedTs, batch.highestCreatedTs);
+      } catch (error) {
+        if (isUnsupportedChainTallyError(error)) {
+          throw new Error(
+            `[${organization.slug ?? organization.id}] Tally returned "chain id is not supported" for organization-wide proposals. ` +
+              "Run organization sync first (`pnpm sync:tally --organizations-only`) so `governor_ids` is stored; proposal sync then queries per-governor to avoid mixed-chain batches."
+          );
+        }
+        throw error;
+      }
     }
   }
 
@@ -239,6 +237,59 @@ async function syncProposals() {
   });
 
   return upserted;
+}
+
+async function syncProposalsForOrgWithFilters(
+  organization: TallyOrganizationSyncRow,
+  extraFilters: { governorId?: string },
+  budget: { remaining: number }
+) {
+  let upserted = 0;
+  let highestCreatedTs = 0;
+  let cursor: string | null = null;
+  let fetchedForScope = 0;
+  const scopeLabel = extraFilters.governorId ?? "all governors";
+
+  while (budget.remaining > 0) {
+    const pageLimit = Math.min(TALLY_PAGE_SIZE, budget.remaining);
+    const page = await tally.listProposals({
+      filters: {
+        organizationId: organization.id,
+        ...extraFilters,
+      },
+      page: {
+        limit: pageLimit,
+        afterCursor: cursor,
+      },
+    });
+
+    const proposals = page.nodes.filter(isTallyProposal);
+    if (proposals.length === 0) break;
+
+    for (const proposal of proposals) {
+      await upsertProposal(proposal, organization);
+      highestCreatedTs = Math.max(highestCreatedTs, normalizeTimestampToUnixSeconds(proposal.block) ?? 0);
+      upserted += 1;
+    }
+
+    budget.remaining -= proposals.length;
+    fetchedForScope += proposals.length;
+    cursor = page.pageInfo.lastCursor;
+    await safelyUpsertSyncState(TALLY_SOURCE.proposalEntityType, {
+      last_cursor: JSON.stringify({
+        organizationId: organization.id,
+        governorId: extraFilters.governorId ?? null,
+        afterCursor: cursor,
+      }),
+    });
+    console.log(
+      `[${TALLY_SOURCE.proposalEntityType}] ${organization.slug ?? organization.id} (${scopeLabel}): fetched ${fetchedForScope}`
+    );
+
+    if (!cursor || proposals.length < pageLimit) break;
+  }
+
+  return { upserted, highestCreatedTs };
 }
 
 async function upsertOrganization(organization: TallyOrganization) {
@@ -346,7 +397,7 @@ async function upsertProposal(
   });
 }
 
-async function getOrganizationsForProposalSync() {
+async function getOrganizationsForProposalSync(): Promise<TallyOrganizationSyncRow[]> {
   return withDatabaseRetry("getOrganizationsForProposalSync", async () => {
     const conditions = [
       options.organizationIds.length > 0 ? inArray(tallyOrganizations.id, options.organizationIds) : undefined,
@@ -358,6 +409,7 @@ async function getOrganizationsForProposalSync() {
         id: tallyOrganizations.id,
         slug: tallyOrganizations.slug,
         name: tallyOrganizations.name,
+        governorIds: tallyOrganizations.governorIds,
       })
       .from(tallyOrganizations);
 
@@ -631,6 +683,22 @@ function isRetryableDatabaseError(error: unknown) {
 function stringifyError(error: unknown) {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+type TallyOrganizationSyncRow = {
+  id: string;
+  slug: string;
+  name: string;
+  governorIds: string[];
+};
+
+function normalizeGovernorIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => String(entry)).filter(Boolean);
+}
+
+function isUnsupportedChainTallyError(error: unknown) {
+  return /chain id is not supported/i.test(stringifyError(error));
 }
 
 function sleep(ms: number) {

@@ -29,6 +29,13 @@
       "when": 1777654021566,
       "tag": "0003_add_tally_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777920496817,
+      "tag": "0004_add_governance_protocols",
+      "breakpoints": true
     }
   ]
 }

@@ -84,6 +84,7 @@ Copy `.env.example` to `.env` to get started.
 | `sync:snapshot:full` | `npx tsx scripts/sync-snapshot.ts --full` |
 | `sync:tally` | `npx tsx scripts/sync-tally.ts` |
 | `sync:tally:full` | `npx tsx scripts/sync-tally.ts --full` |
+| `link:protocols` | `npx tsx scripts/link-governance-protocols.ts` |
 | `backfill:space-proposal-count` | `npx tsx scripts/backfill-space-proposal-count.ts` |
 | `backfill:space-avatar` | `npx tsx scripts/backfill-space-avatar.ts` |
 | `translate:proposals` | `npx tsx scripts/translate-proposals.ts` |
@@ -96,7 +97,7 @@ Copy `.env.example` to `.env` to get started.
 
 **Source of truth: [`db/drizzle-schema.ts`](db/drizzle-schema.ts)** — read that file directly for column names, types, and constraints. Do not duplicate it here.
 
-8 tables: `snapshot_spaces`, `snapshot_space_members`, `snapshot_proposals`, `proposal_translations`, `snapshot_sync_state`, `snapshot_sync_runs`, `tally_organizations`, `tally_proposals`.
+10 tables: `snapshot_spaces`, `snapshot_space_members`, `snapshot_proposals`, `proposal_translations`, `snapshot_sync_state`, `snapshot_sync_runs`, `tally_organizations`, `tally_proposals`, `governance_protocols`, `governance_protocol_sources`.
 
 Notable conventions:
 - All tables have `created_at` and `updated_at` (`timestamptz NOT NULL DEFAULT now()`), set on insert and upsert respectively
@@ -111,8 +112,9 @@ Notable conventions:
 
 - Keep source-specific ingest tables separate (`snapshot_*`, `tally_*`) until aggregate query patterns justify materialized views or aggregate tables
 - Public aggregate IDs must be source-scoped: `snapshot:<id>` or `tally:<id>`
+- Canonical protocol mappings live in `governance_protocols` and `governance_protocol_sources`
 - Source descriptors live in `lib/governance/sources.ts`
-- The planned aggregate API contract lives in `docs/1. governance-aggregation-api.md`
+- The aggregate API contract lives in `docs/1. governance-aggregation-api.md`
 - Use `/api/snapshot/*` and `/api/tally/*` for source-specific APIs
 - Do not change existing `/api/spaces` or `/api/proposals` response shapes while adding source-specific or aggregate routes
 
@@ -237,6 +239,34 @@ npx tsx scripts/sync-tally.ts --proposals-only
 **Sync state entity types:**
 - Organizations: `tally:organizations`
 - Proposals: `tally:proposals`
+
+---
+
+### `scripts/link-governance-protocols.ts`
+
+Links already-synced Snapshot spaces and Tally organizations into canonical protocol rows.
+
+```bash
+# Preview proposed links
+pnpm link:protocols --dry-run --limit 50
+
+# Write protocol links
+pnpm link:protocols --min-proposals 1
+
+# Link one source family
+npx tsx scripts/link-governance-protocols.ts --source snapshot --limit 1000
+npx tsx scripts/link-governance-protocols.ts --source tally --limit 1000
+
+# Use or bypass manual protocol source seeds
+pnpm link:protocols --seed-file data/governance-protocol-sources.json
+pnpm link:protocols --skip-seed
+```
+
+Writes:
+- `governance_protocols`
+- `governance_protocol_sources`
+
+This script does not fetch external APIs. Run it after `sync:snapshot` and/or `sync:tally`. Manual seeds in `data/governance-protocol-sources.json` run before automatic linking, and automatic links do not overwrite manual source refs.
 
 ---
 
@@ -511,7 +541,7 @@ GET /api/tally/sync
 
 ### Planned aggregate APIs
 
-The multi-source aggregate API is planned but not fully implemented. `GET /api/sources` and `GET /api/sync` are available as discovery/status endpoints. Use `docs/1. governance-aggregation-api.md` as the contract source before adding or changing `/api/protocols`, `/api/protocols/[id]/sources`, `/api/protocols/[id]/proposals`, or aggregate `/api/proposals`.
+The multi-source aggregate API is partially implemented. `GET /api/sources`, `GET /api/sync`, `GET /api/protocols`, `GET /api/protocols/[id]`, `GET /api/protocols/[id]/sources`, and `GET /api/protocols/[id]/proposals` are available. Use `docs/1. governance-aggregation-api.md` as the contract source before changing aggregate `/api/proposals`.
 
 Rules:
 - All aggregate entities must expose `source`, `sourceId`, and source-scoped `uid`
