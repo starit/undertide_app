@@ -10,7 +10,7 @@ Developer reference for AI agents and contributors working in this repository.
 
 **Stack:** Next.js 15 · React 19 · TypeScript · Drizzle ORM · Neon (serverless Postgres) · Tailwind CSS · Radix UI
 
-**Theming:** CSS variables in `app/globals.css`, `next-themes`, and Tailwind — see [`docs/2. themes.md`](docs/2.%20themes.md) for how to add a theme.
+**Theming:** CSS variables in `app/globals.css`, `next-themes`, and Tailwind; **themed.js** (`@themed.js/react`) also injects `--themed-*` tokens, synced from the UI theme — see [`docs/2. themes.md`](docs/2.%20themes.md).
 
 ---
 
@@ -55,9 +55,10 @@ Developer reference for AI agents and contributors working in this repository.
 |---|---|---|
 | `DATABASE_URL` | Yes (one of two) | Neon pooled connection string (pgBouncer) — used by the Next.js app |
 | `DATABASE_URL_UNPOOLED` | Yes (one of two) | Neon direct connection string — used by Drizzle-kit and migration scripts |
-| `DEEPSEEK_API_KEY` | For translation only | DeepSeek API key |
+| `DEEPSEEK_API_KEY` | For translation + theme AI | DeepSeek API key |
 | `DEEPSEEK_BASE_URL` | No | DeepSeek base URL (default: `https://api.deepseek.com`) |
 | `DEEPSEEK_MODEL` | No | DeepSeek model ID (default: `deepseek-chat`) |
+| `THEME_GENERATE_MIN_INTERVAL_MS` | No | Min milliseconds between `POST /api/themes/generate` calls **per client IP** (default: `5000`). In-memory per Node instance. |
 | `TALLY_API_KEY` | For Tally sync only | Tally governance API key |
 | `TALLY_API_URL` | No | Tally GraphQL endpoint (default: `https://api.tally.xyz/query`) |
 
@@ -410,6 +411,34 @@ Returns database connection status.
 ```json
 { "ok": true, "database": "configured", "mode": "neon-http" }
 ```
+
+---
+
+### `GET /api/themes/generate`
+
+Returns whether server-side AI theme generation is available.
+
+```json
+{ "data": { "configured": true } }
+```
+
+`configured` is `true` when `DEEPSEEK_API_KEY` is set (same key as proposal translation).
+
+---
+
+### `POST /api/themes/generate`
+
+Generates a **themed.js** token theme from a natural-language `prompt` using DeepSeek. Requires `DEEPSEEK_API_KEY`. Max prompt length: 800 characters.
+
+**Rate limit:** one successful admission per client IP per `THEME_GENERATE_MIN_INTERVAL_MS` (default 5000 ms). Uses `X-Forwarded-For` / `X-Real-IP` when present. Exceeding returns `429` with `{ error, retryAfterSec }` and `Retry-After` header. Limiter state is in-memory (resets per server process; not shared across serverless instances).
+
+| Body field | Type | Description |
+|---|---|---|
+| `prompt` | `string` | Natural-language style description |
+
+Returns `{ data: Theme }` (themed.js theme object). Errors: `400` (bad/missing prompt), `429` (rate limited), `503` (not configured), `502` (generic message; details logged server-side only).
+
+**Audit log:** each successful generation prints one JSON line to stdout prefixed with `[theme_generate]` (`kind`, `at`, `prompt`, `clientIp`, truncated `userAgent`, `theme`) for ops / tuning reference. Not persisted in the database.
 
 ---
 

@@ -26,6 +26,12 @@ importers:
       '@reduxjs/toolkit':
         specifier: ^2.2.3
         version: 2.11.2(react-redux@9.2.0(@types/react@19.2.14)(react@19.2.5)(redux@5.0.1))(react@19.2.5)
+      '@themed.js/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@themed.js/react':
+        specifier: ^0.2.0
+        version: 0.2.0(react@19.2.5)
       class-variance-authority:
         specifier: ^0.7.0
         version: 0.7.1
@@ -1349,6 +1355,15 @@ packages:
 
   '@swc/types@0.1.26':
     resolution: {integrity: sha512-lyMwd7WGgG79RS7EERZV3T8wMdmPq3xwyg+1nmAM64kIhx5yl+juO2PYIHb7vTiPgPCj8LYjsNV2T5wiQHUEaw==}
+
+  '@themed.js/core@0.2.0':
+    resolution: {integrity: sha512-bvZmaSeuILgZhrrtGtEIbPgBCkxwZXW2RD23J5wzlUq0eDnEshyOJgoJcbpLQY+LajNRpDO/3XEVylH8y9e0jQ==}
+    engines: {node: '>=18.0.0'}
+
+  '@themed.js/react@0.2.0':
+    resolution: {integrity: sha512-wfj8SMou4rL7wreC0VoQLvBOIiGESwn1wPk1PZExlLyXCc4v8uYvu55WKURJWFI0g3xlYfgA7XZWLYowIEk9qg==}
+    peerDependencies:
+      react: '>=18.0.0'
 
   '@types/debug@4.1.13':
     resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
@@ -3210,6 +3225,13 @@ snapshots:
   '@swc/types@0.1.26':
     dependencies:
       '@swc/counter': 0.1.3
+
+  '@themed.js/core@0.2.0': {}
+
+  '@themed.js/react@0.2.0(react@19.2.5)':
+    dependencies:
+      '@themed.js/core': 0.2.0
+      react: 19.2.5
 
   '@types/debug@4.1.13':
     dependencies:

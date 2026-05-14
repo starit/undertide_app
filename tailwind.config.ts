@@ -60,9 +60,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["IBM Plex Sans", "ui-sans-serif", "sans-serif"],
-        serif: ["Source Serif 4", "ui-serif", "serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        sans: ["var(--font-sans)"],
+        serif: ["var(--font-serif)"],
+        mono: ["var(--font-mono)"],
       },
       boxShadow: {
         panel: "0 14px 40px hsl(var(--shadow-color) / 0.08)",

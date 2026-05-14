@@ -92,6 +92,11 @@
   --avatar-gradient-sat-accent: 55%;
   --avatar-gradient-light-b: 38%;
 
+  /* Font stacks — Tailwind `font-sans` / `font-serif` / `font-mono`; overridden inline from themed.js typography */
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
   color-scheme: light;
 }
 

@@ -4,6 +4,7 @@ import { getMessages } from "next-intl/server";
 import "./globals.css";
 import { PageShell } from "@/components/page-shell";
 import { StoreProvider } from "@/store/provider";
+import { ThemedJsSSRStyle } from "@/components/themed-js-ssr-style";
 import { ThemeProvider } from "@/components/theme-provider";
 import { getServerLocale } from "@/lib/i18n-server";
 
@@ -74,6 +75,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <body>
+        <ThemedJsSSRStyle />
         <ThemeProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
             <StoreProvider>
