@@ -17,6 +17,7 @@
     "backfill:space-avatar": "npx tsx scripts/backfill-space-avatar.ts",
     "import:proposal-translations": "npx tsx scripts/import-proposal-translations.ts",
     "translate:proposals": "npx tsx scripts/translate-proposals.ts",
+    "list:retranslate-candidates": "npx tsx scripts/list-retranslate-candidates.ts",
     "example:bench:spaces": "npx tsx examples/benchmark-spaces-api.ts",
     "example:api:snapshot": "npx tsx examples/call-snapshot-api.ts",
     "example:api:tally": "npx tsx examples/call-tally-api.ts",

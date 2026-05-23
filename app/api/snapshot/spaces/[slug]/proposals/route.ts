@@ -3,6 +3,8 @@ import { listSpaceProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+const DEFAULT_PROPOSAL_LIMIT = 24;
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const { searchParams } = new URL(request.url);
@@ -10,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     q: searchParams.get("q") ?? undefined,
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
     sort: (searchParams.get("sort") as "time" | "heat" | null) ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_PROPOSAL_LIMIT,
     locale: searchParams.get("locale") ?? undefined,
   });
 

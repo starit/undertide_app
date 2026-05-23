@@ -104,7 +104,7 @@ Writes into table **`proposal_translations`** (title, body, summary per locale).
 - **Batches:** DB reads use `TRANSLATE_PROPOSALS_BATCH_SIZE` (default `100`) to avoid huge HTTP responses.
 - **Low-value skip:** very short / empty / pattern-matched junk is skipped; **sentinel** rows (`translated_by = skipped:low-value`) are inserted for skipped locales so those proposals are not re-queued forever.
 - **Markdown:** fenced code blocks are replaced with `[[CODE_BLOCK_n]]` placeholders before the LLM call and restored afterward; if restoration fails, the script falls back to the source body.
-- **Long bodies:** source body may be truncated to `TRANSLATE_MAX_BODY_CHARS` before sending. Proposals with body length **≥ `TRANSLATE_TWO_PHASE_BODY_CHARS`** (default `4000`) use **two** DeepSeek completions (title+summary excerpt, then body only). Shorter proposals use **one** completion with a single JSON `{ title, body, summary }`.
+- **Long bodies:** source body may be truncated to `TRANSLATE_MAX_BODY_CHARS` before sending (default is high; the model’s context window is the practical ceiling). Proposals with body length **≥ `TRANSLATE_TWO_PHASE_BODY_CHARS`** (default `4000`) use **two** DeepSeek completions (title+summary excerpt, then body only). Shorter proposals use **one** completion with a single JSON `{ title, body, summary }`.
 
 ### CLI flags
 
@@ -147,6 +147,41 @@ Force re-translate and overwrite existing Chinese rows:
 npx tsx scripts/translate-proposals.ts --locale zh --overwrite --limit 1000000
 ```
 
+### Rows that look “truncated” (re-translate after raising limits or fixing markers)
+
+The translate script used to embed an English truncation marker inside the body (sometimes model-translated into Chinese). Newer runs append a short **footer** instead when the source body exceeds `TRANSLATE_MAX_BODY_CHARS`. To **list** `proposal_translations` rows whose stored `body` still contains those artifacts (read-only SQL scan):
+
+```bash
+pnpm list:retranslate-candidates
+# or: npx tsx scripts/list-retranslate-candidates.ts
+```
+
+Useful flags:
+
+| Flag | Example | Purpose |
+| --- | --- | --- |
+| `--locale` | `--locale zh` | Repeat to filter locales. |
+| `--limit` | `--limit 20000` | Cap rows (default 5000, max 100000). |
+| `--format` | `table` (default), `json`, `csv`, `pairs`, `commands` | `pairs` = `proposal_id<TAB>locale` per line; `commands` = one full `translate-proposals.ts … --overwrite` line per row (review before piping to `sh`). |
+
+**Re-translate and update the database** for one proposal + locale (upserts `proposal_translations`):
+
+```bash
+npx tsx scripts/translate-proposals.ts --proposal-id 0x… --locale zh --overwrite
+```
+
+Batch from saved pairs (example):
+
+```bash
+pnpm list:retranslate-candidates --format pairs --locale zh > /tmp/retranslate-pairs.txt
+while IFS=$'\t' read -r id loc; do
+  [ -z "$id" ] && continue
+  npx tsx scripts/translate-proposals.ts --proposal-id "$id" --locale "$loc" --overwrite
+done < /tmp/retranslate-pairs.txt
+```
+
+Ensure `TRANSLATE_MAX_BODY_CHARS` / `TRANSLATE_MAX_TOKENS` in `.env` match what you want **before** running overwrite passes.
+
 ### Re-runs and interrupts
 
 You usually **do not** need multiple passes if `--limit` is large enough. If the process stops (network, Ctrl+C, rate limits), run the **same command again**: the SQL filter selects only proposals that still lack translations for your target locales(s), so work continues where it left off.
@@ -187,18 +222,18 @@ Progress lines include:
 | `TRANSLATE_PROPOSALS_LIMIT` | `10` | Default `--limit` when the flag is omitted. |
 | `TRANSLATE_PROPOSALS_BATCH_SIZE` | `100` | Rows fetched per DB batch. |
 
-**Optional — LLM sizing (tune when bodies are huge or responses truncate)**
+**Optional — LLM sizing (defaults favour completeness; lower only if you hit provider errors or cost caps)**
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TRANSLATE_MAX_BODY_CHARS` | `12000` | Max source characters sent to the model (remainder truncated with a marker). |
+| `TRANSLATE_MAX_BODY_CHARS` | `250000` | Max source characters sent to the model; remainder is not translated (footer added). |
 | `TRANSLATE_TWO_PHASE_BODY_CHARS` | `4000` | If **truncated** body length ≥ this, run two-phase translation; otherwise one-shot JSON. Lower this if single-shot responses still truncate. |
-| `TRANSLATE_MAX_TOKENS` | `8192` | `max_tokens` for **single-shot** completion and for **phase-2 body-only** completion. |
-| `TRANSLATE_MAX_TOKENS_META` | `3072` | `max_tokens` for **phase-1** title + short excerpt summary JSON. |
+| `TRANSLATE_MAX_TOKENS` | `32768` | `max_tokens` for **single-shot** completion and for **phase-2 body-only** completion. |
+| `TRANSLATE_MAX_TOKENS_META` | `16384` | `max_tokens` for **phase-1** title + short excerpt summary JSON. |
 
 ### Troubleshooting
 
-- **`DeepSeek invalid JSON` / truncated JSON in logs:** often output hit `max_tokens`. Try raising `TRANSLATE_MAX_TOKENS` and/or **`TRANSLATE_TWO_PHASE_BODY_CHARS`** so more proposals use two-phase mode; reduce `TRANSLATE_MAX_BODY_CHARS` only if inputs are absurdly large.
+- **`DeepSeek invalid JSON` / truncated JSON in logs:** often output hit `max_tokens` or context limits. Try raising `TRANSLATE_MAX_TOKENS` / `TRANSLATE_MAX_TOKENS_META` and/or **`TRANSLATE_TWO_PHASE_BODY_CHARS`** so more proposals use two-phase mode; if the API rejects huge requests, lower `TRANSLATE_MAX_BODY_CHARS`.
 - **`finish_reason=length`:** completion was cut off; same tuning as above.
 - **Many `skipped(low-value)`:** expected for old junk proposals; sentinels prevent endless retries.
 

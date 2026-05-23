@@ -89,6 +89,7 @@ Copy `.env.example` to `.env` to get started.
 | `backfill:space-proposal-count` | `npx tsx scripts/backfill-space-proposal-count.ts` |
 | `backfill:space-avatar` | `npx tsx scripts/backfill-space-avatar.ts` |
 | `translate:proposals` | `npx tsx scripts/translate-proposals.ts` |
+| `list:retranslate-candidates` | `npx tsx scripts/list-retranslate-candidates.ts` |
 
 > **Do not use `pnpm db:migrate`** (drizzle-kit's migrate command) for routine migrations — it uses WebSocket mode and can hang against Neon. Use `npx tsx scripts/db-migrate.ts` instead (see below).
 
@@ -326,9 +327,9 @@ Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 |---|---|---|
 | `TRANSLATE_PROPOSALS_BATCH_SIZE` | `100` | Proposals fetched per DB batch |
 | `TRANSLATE_PROPOSALS_LIMIT` | `10` | Default `--limit` value |
-| `TRANSLATE_MAX_TOKENS` | `8192` | `max_tokens` for the **body-only** completion (phase 2) and for **single-shot** |
-| `TRANSLATE_MAX_TOKENS_META` | `3072` | `max_tokens` for the **title + short-summary** completion (phase 1) |
-| `TRANSLATE_MAX_BODY_CHARS` | `12000` | Input body truncation threshold |
+| `TRANSLATE_MAX_TOKENS` | `32768` | `max_tokens` for the **body-only** completion (phase 2) and for **single-shot** |
+| `TRANSLATE_MAX_TOKENS_META` | `16384` | `max_tokens` for the **title + short-summary** completion (phase 1) |
+| `TRANSLATE_MAX_BODY_CHARS` | `250000` | Input body truncation threshold (UTF-16 length; provider context is the real limit) |
 | `TRANSLATE_TWO_PHASE_BODY_CHARS` | `4000` | Above this source body length (before code-fence protection), two DeepSeek completions are used; below, one shot with `title`+`body`+`summary` JSON |
 
 **Markdown structure guarantees (important):**
@@ -341,7 +342,7 @@ Requires: `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 - Proposals are ordered by `created_at DESC` (newest first) so recent governance is translated before historical content.
 - Low-value proposals (empty body, very short content, test/spam patterns) are skipped and permanently marked with sentinel rows so they are not re-scanned on restart.
 - The script prints progress counters: translated, skipped(existing), skipped(low-value), failed, remaining.
-- Bodies longer than `TRANSLATE_MAX_BODY_CHARS` are truncated before sending to the LLM.
+- Bodies longer than `TRANSLATE_MAX_BODY_CHARS` are truncated before sending to the LLM; a short locale-specific footer is appended to the stored translation when that happens.
 - Translation uses **two completions** only when the source body reaches `TRANSLATE_TWO_PHASE_BODY_CHARS` (default 4000 chars): (1) JSON `title` + `summary` from a short excerpt, (2) JSON `body` only. Shorter proposals use a **single** completion with `title`+`body`+`summary` JSON.
 - API responses report `finish_reason` on parse failure when useful; curly-quote normalization assists JSON parsing.
 

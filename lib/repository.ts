@@ -32,6 +32,16 @@ type ProposalFilters = {
   translatedOnly?: boolean;
 };
 
+type NormalizedProposalFilters = {
+  q?: string;
+  status?: ProposalStatus | "All";
+  sort: "time" | "heat";
+  spaceSlug?: string;
+  limit?: number;
+  locale?: string;
+  translatedOnly: boolean;
+};
+
 type SpaceFilters = {
   q?: string;
   category?: string;
@@ -76,10 +86,8 @@ type SlimSpaceRecord = Pick<
   | "twitter"
   | "github"
   | "coingecko"
-  | "admins"
   | "memberCount"
   | "proposalCount"
-  | "strategies"
 >;
 
 type ProposalRecord = {
@@ -129,12 +137,13 @@ export async function getSpaceBySlug(slug: string): Promise<Space | null> {
 }
 
 export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
-  const records = await fetchProposals(query);
+  const normalizedQuery = normalizeProposalFilters(query);
+  const records = await getCachedProposals(normalizedQuery);
   // time sort + limit are fully handled in SQL; skip in-memory pass
-  if ((!query.sort || query.sort === "time") && query.limit) {
+  if (normalizedQuery.sort === "time" && normalizedQuery.limit) {
     return records.map((record) => mapProposal(record, { includeBody: false }));
   }
-  return applyProposalFilters(records.map((record) => mapProposal(record, { includeBody: false })), query);
+  return applyProposalFilters(records.map((record) => mapProposal(record, { includeBody: false })), normalizedQuery);
 }
 
 export async function getProposalById(id: string, locale?: string): Promise<Proposal | null> {
@@ -232,6 +241,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
 
 const SPACE_LIST_REVALIDATE_SECONDS = 120;
 const SPACE_DETAIL_REVALIDATE_SECONDS = 300;
+const PROPOSAL_LIST_REVALIDATE_SECONDS = 60;
 const PLATFORM_STATS_REVALIDATE_SECONDS = 120;
 
 const getCachedSpaces = unstable_cache(
@@ -255,6 +265,15 @@ const getCachedSpaceBySlug = unstable_cache(
   {
     revalidate: SPACE_DETAIL_REVALIDATE_SECONDS,
     tags: ["spaces"],
+  }
+);
+
+const getCachedProposals = unstable_cache(
+  async (query: NormalizedProposalFilters) => fetchProposals(query),
+  ["proposals-list"],
+  {
+    revalidate: PROPOSAL_LIST_REVALIDATE_SECONDS,
+    tags: ["proposals", "spaces", "translations"],
   }
 );
 
@@ -302,10 +321,8 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
         twitter: snapshotSpaces.twitter,
         github: snapshotSpaces.github,
         coingecko: snapshotSpaces.coingecko,
-        admins: snapshotSpaces.admins,
         memberCount: snapshotSpaces.memberCount,
         proposalCount: snapshotSpaces.proposalCount,
-        strategies: snapshotSpaces.strategies,
       })
       .from(snapshotSpaces)
       .where(and(...conditions));
@@ -342,6 +359,27 @@ function normalizeSpaceFilters(query: SpaceFilters = {}): NormalizedSpaceFilters
   };
 }
 
+function normalizeProposalFilters(query: ProposalFilters = {}): NormalizedProposalFilters {
+  const status =
+    query.status === "Active" ||
+    query.status === "Upcoming" ||
+    query.status === "Closed" ||
+    query.status === "Executed" ||
+    query.status === "All"
+      ? query.status
+      : undefined;
+
+  return {
+    q: normalizeOptionalString(query.q),
+    status,
+    sort: query.sort === "heat" ? "heat" : "time",
+    spaceSlug: normalizeOptionalString(query.spaceSlug),
+    limit: typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined,
+    locale: normalizeTranslationLocale(query.locale),
+    translatedOnly: query.translatedOnly === true,
+  };
+}
+
 async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
   if (!hasDatabase) {
     return null;
@@ -370,10 +408,8 @@ async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
         twitter: snapshotSpaces.twitter,
         github: snapshotSpaces.github,
         coingecko: snapshotSpaces.coingecko,
-        admins: snapshotSpaces.admins,
         memberCount: snapshotSpaces.memberCount,
         proposalCount: snapshotSpaces.proposalCount,
-        strategies: snapshotSpaces.strategies,
       })
       .from(snapshotSpaces)
       .where(eq(snapshotSpaces.id, slug))
@@ -451,7 +487,6 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
                 )
               )
               .where(and(...conditions))
-              .orderBy(desc(snapshotProposals.createdAt))
           : db
               .select({
                 proposal: {
@@ -492,7 +527,6 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
                 )
               )
               .where(and(...conditions))
-              .orderBy(desc(snapshotProposals.createdAt))
         : db
             .select({
               proposal: {
@@ -522,15 +556,19 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
             })
             .from(snapshotProposals)
             .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-            .where(and(...conditions))
-            .orderBy(desc(snapshotProposals.createdAt));
+            .where(and(...conditions));
 
-    // push LIMIT to SQL only when sort=time (default) — heat/importance need in-memory reorder
-    if ((!query.sort || query.sort === "time") && query.limit) {
-      return await baseQuery.limit(query.limit);
+    const orderedQuery =
+      query.sort === "heat"
+        ? baseQuery.orderBy(desc(proposalHeatSortSql()), desc(snapshotProposals.createdAt))
+        : baseQuery.orderBy(desc(snapshotProposals.createdAt));
+
+    const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
+    if (limit) {
+      return await orderedQuery.limit(limit);
     }
 
-    return await baseQuery;
+    return await orderedQuery;
   } catch {
     return [];
   }
@@ -828,7 +866,7 @@ function mapSpace(space: SlimSpaceRecord): Space {
     slug: space.id,
     name: space.name,
     tagline: buildTagline(summary, space.network),
-    verified: typeof space.verified === "boolean" ? space.verified : Array.isArray(space.admins) && space.admins.length > 0,
+    verified: space.verified,
     flagged: space.flagged,
     hibernated: space.hibernated,
     turbo: space.turbo,
@@ -989,7 +1027,7 @@ function emptyPlatformStats(): PlatformStats {
 }
 
 function deriveSpaceCategories(
-  space: Pick<typeof snapshotSpaces.$inferSelect, "network" | "categories" | "strategies">
+  space: Pick<typeof snapshotSpaces.$inferSelect, "network" | "categories">
 ) {
   const categories = new Set<string>();
   const snapshotCategories = Array.isArray(space.categories) ? space.categories : [];
@@ -1027,6 +1065,13 @@ function computeActivityScore(memberCount: number, proposalCount: number) {
 function computeProposalHeat(scoresTotal: string | null, memberCount: number) {
   const score = scoresTotal ? Number(scoresTotal) : 0;
   return Math.max(10, Math.min(99, Math.round(Math.log10(score + 10) * 24 + Math.log10(memberCount + 10) * 12)));
+}
+
+function proposalHeatSortSql() {
+  return sql<number>`(
+    (ln((coalesce(${snapshotProposals.scoresTotal}, 0)::double precision + 10)) / ln(10)) * 24
+    + (ln((${snapshotSpaces.memberCount})::double precision + 10) / ln(10)) * 12
+  )`;
 }
 
 function mapProposalStatus(state: string): ProposalStatus {

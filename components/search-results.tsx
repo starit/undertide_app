@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Proposal, Space } from "@/lib/types";
 import { ProposalCard } from "@/components/proposal-card";
@@ -29,6 +29,9 @@ export function SearchResults({
   const [results, setResults] = useState({ proposals, spaces });
   const [isLoading, setIsLoading] = useState(false);
   const deferredQuery = useDeferredValue(query);
+  const skippedInitialRequestRef = useRef(false);
+  const completedRequestKeyRef = useRef<string | null>(null);
+  const inFlightRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setResults({ proposals, spaces });
@@ -39,7 +42,6 @@ export function SearchResults({
   }, [deferredQuery]);
 
   useEffect(() => {
-    const controller = new AbortController();
     const searchParams = new URLSearchParams({
       limit: String(limit),
       verified: "true",
@@ -53,6 +55,20 @@ export function SearchResults({
     if (deferredQuery.trim()) {
       searchParams.set("q", deferredQuery.trim());
     }
+
+    const requestKey = searchParams.toString();
+    if (!skippedInitialRequestRef.current) {
+      skippedInitialRequestRef.current = true;
+      completedRequestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (completedRequestKeyRef.current === requestKey || inFlightRequestKeyRef.current === requestKey) {
+      return;
+    }
+
+    const controller = new AbortController();
+    inFlightRequestKeyRef.current = requestKey;
 
     async function loadResults() {
       setIsLoading(true);
@@ -83,6 +99,7 @@ export function SearchResults({
             proposals: Array.isArray(proposalsJson.data) ? proposalsJson.data : [],
             spaces: Array.isArray(spacesJson.data) ? spacesJson.data : [],
           });
+          completedRequestKeyRef.current = requestKey;
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -90,6 +107,9 @@ export function SearchResults({
           setResults({ proposals: [], spaces: [] });
         }
       } finally {
+        if (inFlightRequestKeyRef.current === requestKey) {
+          inFlightRequestKeyRef.current = null;
+        }
         if (!controller.signal.aborted) {
           setIsLoading(false);
         }

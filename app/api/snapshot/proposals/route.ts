@@ -3,6 +3,7 @@ import { listProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+const DEFAULT_PROPOSAL_LIMIT = 24;
 const PROPOSAL_API_S_MAXAGE_SECONDS = 60;
 const PROPOSAL_API_STALE_WHILE_REVALIDATE_SECONDS = 180;
 
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
     sort: (searchParams.get("sort") as "time" | "heat" | null) ?? undefined,
     spaceSlug: searchParams.get("spaceSlug") ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_PROPOSAL_LIMIT,
     locale: searchParams.get("locale") ?? undefined,
     translatedOnly: searchParams.get("translatedOnly") === "true",
   });

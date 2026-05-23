@@ -15,15 +15,13 @@ const deepseekBaseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.c
 const deepseekModel = process.env.DEEPSEEK_MODEL || "deepseek-chat";
 const defaultLimit = Number(process.env.TRANSLATE_PROPOSALS_LIMIT || "10");
 const proposalBatchSize = Number(process.env.TRANSLATE_PROPOSALS_BATCH_SIZE || "100");
-const maxResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS || "8192");
-// Bodies longer than this are truncated before sending to the LLM to keep responses within
-// the max_tokens budget. Most proposals are well under 10 000 chars; very long ones
-// (e.g. detailed parameter updates with appendices) are summarised via the excerpt field.
-const maxBodyCharsForTranslation = Number(process.env.TRANSLATE_MAX_BODY_CHARS || "12000");
-// If protected body exceeds this UTF-16 length (same limit as truncation source), translate in
-// two completions (meta + body-only) to avoid max_tokens truncation inside one huge JSON blob.
+// Defaults favour completeness over cost; override via env if you need tighter caps.
+const maxResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS || "32768");
+// Source body is clipped to this UTF-16 length before the LLM (provider context window is the hard ceiling).
+const maxBodyCharsForTranslation = Number(process.env.TRANSLATE_MAX_BODY_CHARS || "250000");
+// If protected body length ≥ this, use two completions (meta + body-only) instead of one JSON blob.
 const twoPhaseBodyCharThreshold = Number(process.env.TRANSLATE_TWO_PHASE_BODY_CHARS || "4000");
-const maxMetaResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS_META || "3072");
+const maxMetaResponseTokens = Number(process.env.TRANSLATE_MAX_TOKENS_META || "16384");
 const requestedProposalId = readArgValue("--proposal-id");
 const requestedLocales = readArgValues("--locale");
 const limit = Number(readArgValue("--limit") || defaultLimit);
@@ -43,6 +41,39 @@ const localeConfigs: Record<string, { label: string; instruction: string }> = {
     instruction: "Translate into natural, professional Korean for a governance research product.",
   },
 };
+
+/** Shown after translated body when source exceeded `TRANSLATE_MAX_BODY_CHARS` (not sent to the model as translatable prose). */
+const bodyTruncationFooters: Record<string, (n: number) => string> = {
+  zh: (n: number) =>
+    `\n\n---\n*以下译文仅基于原文前 **${n}** 个字符；其余部分未参与翻译。*`,
+  ja: (n: number) =>
+    `\n\n---\n*以下の本文は原文の先頭 **${n}** 文字までに基づく翻訳です。それ以降は含まれません。*`,
+  ko: (n: number) =>
+    `\n\n---\n*아래 본문은 원문의 앞 **${n}**자까지만 번역되었습니다. 이후 내용은 포함되지 않습니다.*`,
+  en: (n: number) =>
+    `\n\n---\n*This translation covers only the first **${n}** characters of the source; the remainder was not sent for translation.*`,
+};
+
+function bodyTruncationSystemNote(charLimit: number): string {
+  return `The proposal body may be cut at ${charLimit} characters for pipeline limits. Translate only the excerpt you receive; do not invent text beyond it. Do not add any note about truncation inside the translated body or JSON values.`;
+}
+
+/** Removes legacy in-body marker (English) and common model translations so re-runs do not stack junk. */
+function stripKnownTruncationMarkers(text: string): string {
+  return text
+    .replace(/\n*\[…content truncated for translation…\]\s*/gi, "\n")
+    .replace(/\n*\[…内容因截断而省略…\]\s*/gu, "\n")
+    .replace(/\n*…内容因截断而省略…\s*/gu, "\n")
+    .replace(/\n*内容因截断而省略[。.]?\s*/gu, "\n")
+    .trimEnd();
+}
+
+function finalizeTranslatedBody(body: string, locale: string, sourceWasTruncated: boolean): string {
+  const cleaned = stripKnownTruncationMarkers(sanitizeText(body));
+  if (!sourceWasTruncated) return cleaned;
+  const footer = (bodyTruncationFooters[locale] ?? bodyTruncationFooters.en)(maxBodyCharsForTranslation);
+  return cleaned + footer;
+}
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required.");
@@ -373,10 +404,8 @@ async function translateProposal(input: {
 }) {
   const excerptBasis = buildMetaExcerpt(input.body ?? "", input.summary);
 
-  const truncatedBody =
-    input.body.length > maxBodyCharsForTranslation
-      ? `${input.body.slice(0, maxBodyCharsForTranslation)}\n\n[…content truncated for translation…]`
-      : input.body;
+  const sourceBodyTruncated = input.body.length > maxBodyCharsForTranslation;
+  const truncatedBody = sourceBodyTruncated ? input.body.slice(0, maxBodyCharsForTranslation) : input.body;
 
   const protectedBody = protectMarkdownCodeFences(truncatedBody);
 
@@ -385,7 +414,11 @@ async function translateProposal(input: {
 
   if (!useTwoPhase) {
     try {
-      return await translateProposalSingleShot(input, protectedBody);
+      const out = await translateProposalSingleShot(input, protectedBody, sourceBodyTruncated);
+      return {
+        ...out,
+        body: finalizeTranslatedBody(out.body, input.locale, sourceBodyTruncated),
+      };
     } catch (error) {
       if (
         error instanceof AssistantJsonParseError &&
@@ -420,12 +453,15 @@ async function translateProposal(input: {
     spaceName: input.spaceName,
     translatedTitle: meta.title ?? input.title,
     protectedBody,
+    sourceBodyTruncated,
   });
+
+  const body = restoreProtectedMarkdown(sanitizeText(rawBodyTranslated), protectedBody, input.body);
 
   return {
     title: sanitizeText(meta.title ?? input.title),
     summary: sanitizeText(meta.summary ?? excerptBasis),
-    body: restoreProtectedMarkdown(sanitizeText(rawBodyTranslated), protectedBody, input.body),
+    body: finalizeTranslatedBody(body, input.locale, sourceBodyTruncated),
   };
 }
 
@@ -437,9 +473,11 @@ async function translateProposalSingleShot(
     body: string;
     summary: string;
   },
-  protectedBody: { text: string; placeholders: string[]; blocks: string[] }
+  protectedBody: { text: string; placeholders: string[]; blocks: string[] },
+  sourceBodyTruncated: boolean
 ): Promise<{ title: string; body: string; summary: string }> {
   const lc = localeConfigs[input.locale];
+  const truncationNote = sourceBodyTruncated ? bodyTruncationSystemNote(maxBodyCharsForTranslation) : "";
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -460,7 +498,10 @@ async function translateProposalSingleShot(
               "Return STRICT JSON ONLY with keys: title, body, summary.",
               "Preserve markdown; never alter [[CODE_BLOCK_n]] placeholders.",
               "Preserve token symbols, URLs, addresses, numbers. Do not emit keys other than title, body, summary.",
-            ].join(" "),
+              truncationNote,
+            ]
+              .filter(Boolean)
+              .join(" "),
         },
         {
           role: "user",
@@ -601,8 +642,10 @@ async function translateBodyRound(args: {
   spaceName: string;
   translatedTitle: string;
   protectedBody: { text: string; placeholders: string[]; blocks: string[] };
+  sourceBodyTruncated: boolean;
 }) {
   const lc = localeConfigs[args.locale];
+  const truncationNote = args.sourceBodyTruncated ? bodyTruncationSystemNote(maxBodyCharsForTranslation) : "";
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -622,7 +665,10 @@ async function translateBodyRound(args: {
               "Return ONLY the translated markdown body text. No JSON. No code fences around your answer.",
               'Keep [[CODE_BLOCK_n]] verbatim; never omit them.',
               "Preserve headings, lists, markdown links emphasis — translate prose only.",
-            ].join(" "),
+              truncationNote,
+            ]
+              .filter(Boolean)
+              .join(" "),
         },
         {
           role: "user",

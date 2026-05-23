@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Space } from "@/lib/types";
@@ -43,13 +43,15 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
   const [results, setResults] = useState(spaces);
   const [isLoading, setIsLoading] = useState(false);
   const deferredQuery = useDeferredValue(query);
+  const skippedInitialRequestRef = useRef(false);
+  const completedRequestKeyRef = useRef<string | null>(null);
+  const inFlightRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setResults(spaces);
   }, [spaces]);
 
   useEffect(() => {
-    const controller = new AbortController();
     const searchParams = new URLSearchParams({
       sort: sort.toLowerCase(),
       limit: "200",
@@ -67,6 +69,20 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
       searchParams.set("verified", "true");
     }
 
+    const requestKey = searchParams.toString();
+    if (!skippedInitialRequestRef.current) {
+      skippedInitialRequestRef.current = true;
+      completedRequestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (completedRequestKeyRef.current === requestKey || inFlightRequestKeyRef.current === requestKey) {
+      return;
+    }
+
+    const controller = new AbortController();
+    inFlightRequestKeyRef.current = requestKey;
+
     async function loadSpaces() {
       setIsLoading(true);
 
@@ -83,6 +99,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
         const payload = (await response.json()) as { data?: Space[] };
         if (!controller.signal.aborted) {
           setResults(Array.isArray(payload.data) ? payload.data : []);
+          completedRequestKeyRef.current = requestKey;
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -90,6 +107,9 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
           setResults([]);
         }
       } finally {
+        if (inFlightRequestKeyRef.current === requestKey) {
+          inFlightRequestKeyRef.current = null;
+        }
         if (!controller.signal.aborted) {
           setIsLoading(false);
         }

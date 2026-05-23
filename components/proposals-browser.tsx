@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Proposal, ProposalStatus } from "@/lib/types";
@@ -36,6 +36,9 @@ export function ProposalsBrowser({
   const [results, setResults] = useState(proposals);
   const [isLoading, setIsLoading] = useState(false);
   const deferredQuery = useDeferredValue(query);
+  const skippedInitialRequestRef = useRef(false);
+  const completedRequestKeyRef = useRef<string | null>(null);
+  const inFlightRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setResults(proposals);
@@ -46,7 +49,6 @@ export function ProposalsBrowser({
   }, [deferredQuery, sort, status, translatedOnly, initialSpaceSlug]);
 
   useEffect(() => {
-    const controller = new AbortController();
     const searchParams = new URLSearchParams({
       sort: sort.toLowerCase(),
       limit: String(limit),
@@ -71,6 +73,20 @@ export function ProposalsBrowser({
       searchParams.set("spaceSlug", initialSpaceSlug);
     }
 
+    const requestKey = searchParams.toString();
+    if (!skippedInitialRequestRef.current) {
+      skippedInitialRequestRef.current = true;
+      completedRequestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (completedRequestKeyRef.current === requestKey || inFlightRequestKeyRef.current === requestKey) {
+      return;
+    }
+
+    const controller = new AbortController();
+    inFlightRequestKeyRef.current = requestKey;
+
     async function loadProposals() {
       setIsLoading(true);
 
@@ -87,6 +103,7 @@ export function ProposalsBrowser({
         const payload = (await response.json()) as { data?: Proposal[] };
         if (!controller.signal.aborted) {
           setResults(Array.isArray(payload.data) ? payload.data : []);
+          completedRequestKeyRef.current = requestKey;
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -94,6 +111,9 @@ export function ProposalsBrowser({
           setResults([]);
         }
       } finally {
+        if (inFlightRequestKeyRef.current === requestKey) {
+          inFlightRequestKeyRef.current = null;
+        }
         if (!controller.signal.aborted) {
           setIsLoading(false);
         }

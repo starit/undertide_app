@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+const INITIAL_SPACE_PROPOSAL_LIMIT = 24;
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const space = await getSpaceBySlug(slug);
@@ -41,7 +43,7 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const [space, proposals] = await Promise.all([
     getSpaceBySlug(slug),
-    listSpaceProposals(slug, { sort: "time", locale }),
+    listSpaceProposals(slug, { sort: "time", locale, limit: INITIAL_SPACE_PROPOSAL_LIMIT }),
   ]);
 
   if (!space) notFound();

@@ -30,10 +30,15 @@ export function ThemeSwitcher() {
   const t = useTranslations("nav");
   const { theme, setTheme } = useNextTheme();
   const { importTheme, apply } = useThemedJsTheme();
+  const [mounted, setMounted] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,24 +112,35 @@ export function ThemeSwitcher() {
           <Sun className="size-3.5" />
           {t("theme")}
         </span>
-        <Select value={theme} onValueChange={setTheme}>
-          <SelectTrigger aria-label={t("themeSelectAria")} className="w-[110px] min-w-0">
-            <SelectValue placeholder={t("theme")} />
-          </SelectTrigger>
-          <SelectContent align="end" className="bg-card/95 backdrop-blur-none">
-            <SelectGroup>
-              <SelectLabel>{t("theme")}</SelectLabel>
-              {themes.map(({ value, labelKey, icon: Icon }) => (
-                <SelectItem key={value} value={value}>
-                  <span className="flex items-center gap-2">
-                    <Icon className="size-3.5" />
-                    {t(labelKey)}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        {mounted ? (
+          <Select value={theme ?? "system"} onValueChange={setTheme}>
+            <SelectTrigger aria-label={t("themeSelectAria")} className="w-[110px] min-w-0">
+              <SelectValue placeholder={t("theme")} />
+            </SelectTrigger>
+            <SelectContent align="end" className="bg-card/95 backdrop-blur-none">
+              <SelectGroup>
+                <SelectLabel>{t("theme")}</SelectLabel>
+                {themes.map(({ value, labelKey, icon: Icon }) => (
+                  <SelectItem key={value} value={value}>
+                    <span className="flex items-center gap-2">
+                      <Icon className="size-3.5" />
+                      {t(labelKey)}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        ) : (
+          <button
+            type="button"
+            disabled
+            aria-label={t("themeSelectAria")}
+            className="flex h-9 w-[110px] min-w-0 cursor-pointer items-center justify-between gap-2 rounded-none border border-input bg-background px-3 py-2 text-sm text-muted-foreground"
+          >
+            {t("theme")}
+          </button>
+        )}
       </div>
       <div className="flex min-w-0 flex-col gap-1 border border-border bg-card/40 p-2 md:max-w-[min(15rem,calc(100vw-12rem))] md:border-0 md:border-l md:border-border md:bg-transparent md:p-0 md:pl-3">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground md:sr-only">{t("themeAiLabel")}</p>
