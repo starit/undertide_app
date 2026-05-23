@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { getSpaceBySlug, listSpaceProposals, listSpaces } from "@/lib/repository";
@@ -44,11 +44,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function SpaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const tSpaces = await getTranslations("spaces");
-  const { slug } = await params;
+  const [tSpaces, locale, { slug }] = await Promise.all([getTranslations("spaces"), getLocale(), params]);
   const [space, proposals] = await Promise.all([
     getSpaceBySlug(slug),
-    listSpaceProposals(slug, { sort: "time", limit: INITIAL_SPACE_PROPOSAL_LIMIT }),
+    listSpaceProposals(slug, { sort: "time", limit: INITIAL_SPACE_PROPOSAL_LIMIT, locale }),
   ]);
 
   if (!space) notFound();

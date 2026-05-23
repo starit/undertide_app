@@ -30,6 +30,58 @@ const overwrite = args.has("--overwrite");
 const LOW_VALUE_MIN_TITLE_LENGTH = 20;
 const LOW_VALUE_MIN_BODY_LENGTH = 80;
 
+// ─── Terminology hints ────────────────────────────────────────────────────────
+// When a pattern is detected in the source text (title + body), the per-locale
+// preferred translation is injected into the prompt so the LLM uses it consistently.
+// Add new entries here to extend the glossary; `translations` only needs entries
+// for locales where the default LLM output is known to be inconsistent or wrong.
+
+type TermHint = {
+  /** Matched case-insensitively against the combined source title + body. */
+  pattern: RegExp;
+  /** Human-readable canonical English form, shown in the prompt. */
+  term: string;
+  /** Per-locale preferred rendering. Omit a locale if no guidance is needed. */
+  translations: Partial<Record<string, string>>;
+};
+
+const TERM_HINTS: TermHint[] = [
+  {
+    pattern: /\btemp(?:erature)?\s*check\b/i,
+    term: "Temp Check",
+    translations: {
+      zh: "温度检查",
+      ja: "温度チェック",
+      ko: "온도 체크",
+    },
+  },
+  {
+    pattern: /\bsnapshot\b/i,
+    term: "Snapshot",
+    translations: {
+      zh: "Snapshot（快照投票平台）",
+      ja: "Snapshot（スナップショット）",
+      ko: "Snapshot（스냅샷）",
+    },
+  },
+];
+
+/**
+ * Scans `sourceText` for known governance terms and returns a compact
+ * "Terminology hints" note to inject into the LLM prompt, or "" if none match.
+ */
+function buildTermHintsNote(sourceText: string, locale: string): string {
+  const matched: string[] = [];
+  for (const hint of TERM_HINTS) {
+    if (!hint.pattern.test(sourceText)) continue;
+    const preferred = hint.translations[locale];
+    if (!preferred) continue;
+    matched.push(`"${hint.term}" → ${preferred}`);
+  }
+  if (matched.length === 0) return "";
+  return `Terminology hints (translate these terms exactly as shown):\n${matched.map((m) => `• ${m}`).join("\n")}`;
+}
+
 const localeConfigs: Record<string, { label: string; instruction: string }> = {
   zh: {
     label: "Simplified Chinese",
@@ -196,7 +248,7 @@ async function main() {
           const translated = await translateProposal({
             locale,
             spaceName: item.space.name,
-            title: item.proposal.title,
+            title: item.proposal.title ?? "",
             body: item.proposal.body ?? "",
             summary: excerpt(item.proposal.body ?? "", 220),
           });
@@ -416,12 +468,18 @@ async function translateProposal(input: {
   const excerptBasis = buildMetaExcerpt(input.body ?? "", input.summary);
 
   const sourceBodyTruncated = input.body.length > maxBodyCharsForTranslation;
-  const truncatedBody = sourceBodyTruncated ? input.body.slice(0, maxBodyCharsForTranslation) : input.body;
+  // Slice by Unicode code points (Array.from) to avoid cutting in the middle of a surrogate pair
+  // (emoji and some CJK chars take 2 UTF-16 units; .slice(0, n) alone can produce invalid strings).
+  const truncatedBody = sourceBodyTruncated
+    ? Array.from(input.body).slice(0, maxBodyCharsForTranslation).join("")
+    : input.body;
 
   const protectedBody = protectMarkdownCodeFences(truncatedBody);
 
+  // Use protectedBody.text length (code blocks replaced with short placeholders) as the threshold —
+  // a body consisting mostly of code may be long but have little translatable prose.
   const useTwoPhase =
-    truncatedBody.length >= twoPhaseBodyCharThreshold && sanitizeText(protectedBody.text).length > 0;
+    sanitizeText(protectedBody.text).length >= twoPhaseBodyCharThreshold;
 
   if (!useTwoPhase) {
     try {
@@ -444,11 +502,15 @@ async function translateProposal(input: {
     }
   }
 
+  const hintsNote = buildTermHintsNote(input.title + "\n" + input.body, input.locale);
+  if (hintsNote) console.log(`[translate] term hints injected (two-phase, ${input.locale}): ${hintsNote.split("\n").slice(1).join(", ")}`);
+
   const meta = await translateTitleAndSummaryRound({
     locale: input.locale,
     spaceName: input.spaceName,
     title: input.title,
     excerpt: excerptBasis || input.title,
+    hintsNote,
   });
 
   if (!sanitizeText(protectedBody.text)) {
@@ -465,6 +527,7 @@ async function translateProposal(input: {
     translatedTitle: meta.title ?? input.title,
     protectedBody,
     sourceBodyTruncated,
+    hintsNote,
   });
 
   const body = restoreProtectedMarkdown(sanitizeText(rawBodyTranslated), protectedBody, input.body);
@@ -489,11 +552,13 @@ async function translateProposalSingleShot(
 ): Promise<{ title: string; body: string; summary: string }> {
   const lc = localeConfigs[input.locale];
   const truncationNote = sourceBodyTruncated ? bodyTruncationSystemNote(maxBodyCharsForTranslation) : "";
+  const hintsNote = buildTermHintsNote(input.title + "\n" + input.body, input.locale);
+  if (hintsNote) console.log(`[translate] term hints injected (single-shot, ${input.locale}): ${hintsNote.split("\n").slice(1).join(", ")}`);
   console.log(
     `[translate] → DeepSeek single-shot locale=${input.locale} body_chars=${protectedBody.text.length}` +
     (sourceBodyTruncated ? " (truncated)" : "")
   );
-  const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
+  const response = await deepseekFetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${deepseekApiKey}`,
@@ -523,8 +588,9 @@ async function translateProposalSingleShot(
           content:
             `${lc.instruction}\n` +
             `Target locale: ${lc.label} (${input.locale})\n` +
-            `Protocol / governance space: ${input.spaceName}\n\n` +
-            `Title:\n${input.title}\n` +
+            `Protocol / governance space: ${input.spaceName}\n` +
+            (hintsNote ? `\n${hintsNote}\n` : "") +
+            `\nTitle:\n${input.title}\n` +
             `Summary (short excerpt for context):\n${input.summary}\n` +
             `Body:\n${protectedBody.text}`,
         },
@@ -562,13 +628,15 @@ async function translateTitleAndSummaryRound(args: {
   spaceName: string;
   title: string;
   excerpt: string;
+  hintsNote?: string;
 }) {
   const lc = localeConfigs[args.locale];
+  const hintsNote = args.hintsNote ?? "";
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     console.log(`[translate] → DeepSeek phase1:meta locale=${args.locale} attempt=${attempt}`);
-    const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
+    const response = await deepseekFetch(`${deepseekBaseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${deepseekApiKey}`,
@@ -601,8 +669,9 @@ async function translateTitleAndSummaryRound(args: {
             content:
               `${lc.instruction}\n` +
               `Target locale: ${lc.label} (${args.locale})\n` +
-              `Protocol / governance space: ${args.spaceName}\n\n` +
-              `Title:\n${args.title}\n\n` +
+              `Protocol / governance space: ${args.spaceName}\n` +
+              (hintsNote ? `\n${hintsNote}\n` : "") +
+              `\nTitle:\n${args.title}\n\n` +
               `Preview excerpt ONLY:\n${args.excerpt}`,
           },
         ],
@@ -661,14 +730,16 @@ async function translateBodyRound(args: {
   translatedTitle: string;
   protectedBody: { text: string; placeholders: string[]; blocks: string[] };
   sourceBodyTruncated: boolean;
+  hintsNote?: string;
 }) {
   const lc = localeConfigs[args.locale];
   const truncationNote = args.sourceBodyTruncated ? bodyTruncationSystemNote(maxBodyCharsForTranslation) : "";
+  const hintsNote = args.hintsNote ?? "";
   console.log(
     `[translate] → DeepSeek phase2:body locale=${args.locale} body_chars=${args.protectedBody.text.length}` +
     (args.sourceBodyTruncated ? " (truncated)" : "")
   );
-  const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
+  const response = await deepseekFetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${deepseekApiKey}`,
@@ -697,8 +768,9 @@ async function translateBodyRound(args: {
           content:
             `${lc.instruction}\n` +
             `Target locale: ${lc.label} (${args.locale})\n` +
-            `Protocol / governance space: ${args.spaceName}\n\n` +
-            `Translated title:\n${args.translatedTitle}\n\n` +
+            `Protocol / governance space: ${args.spaceName}\n` +
+            (hintsNote ? `\n${hintsNote}\n` : "") +
+            `\nTranslated title:\n${args.translatedTitle}\n\n` +
             `Body:\n${args.protectedBody.text}`,
         },
       ],
@@ -751,6 +823,50 @@ function validateLocales(locales: string[]) {
 function sanitizeText(value: string) {
   return value.replace(/\u0000/g, "").trim();
 }
+
+const DEEPSEEK_TIMEOUT_MS = 120_000; // 2 min per completion; avoids indefinite hangs
+
+async function deepseekFetch(url: string, init: RequestInit): Promise<Response> {
+  const retryLimit = 3;
+  const baseMs = 2000;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retryLimit; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timer);
+      // Retry on 429 (rate limit) and 5xx (transient server errors)
+      if (response.status === 429 || response.status >= 500) {
+        const retryAfter = Number(response.headers.get("retry-after") ?? 0);
+        const waitMs = retryAfter > 0 ? retryAfter * 1000 : baseMs * 2 ** attempt;
+        if (attempt < retryLimit) {
+          console.warn(`[translate] DeepSeek ${response.status} attempt ${attempt + 1}/${retryLimit + 1}, retrying in ${Math.round(waitMs / 1000)}s`);
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+        return response;
+      }
+      return response;
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error;
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      const msg = error instanceof Error ? error.message : String(error);
+      if (attempt < retryLimit) {
+        const waitMs = baseMs * 2 ** attempt;
+        console.warn(
+          `[translate] DeepSeek fetch ${isAbort ? `timeout (>${DEEPSEEK_TIMEOUT_MS / 1000}s)` : `error: ${msg}`} attempt ${attempt + 1}/${retryLimit + 1}, retrying in ${Math.round(waitMs / 1000)}s`
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function withRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
   const retryLimit = 3;
   const baseMs = 1000;

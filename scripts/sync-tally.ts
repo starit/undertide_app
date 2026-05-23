@@ -25,14 +25,23 @@ import {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const TALLY_PAGE_SIZE = normalizeInteger(process.env.TALLY_PAGE_SIZE, 20, 1, 20);
-const DEFAULT_ORGANIZATION_LIMIT = normalizeInteger(process.env.TALLY_ORGANIZATION_LIMIT, 100, 1, 100_000);
-const DEFAULT_PROPOSALS_PER_ORGANIZATION = normalizeInteger(process.env.TALLY_PROPOSALS_PER_ORGANIZATION, 20, 1, 100_000);
-const DEFAULT_PROPOSAL_ORGANIZATION_LIMIT = normalizeInteger(process.env.TALLY_PROPOSAL_ORGANIZATION_LIMIT, 50, 1, 100_000);
+// Default to effectively unlimited so all Tally orgs are always scanned.
+// Override via env to cap cost / time in environments with many orgs.
+const DEFAULT_ORGANIZATION_LIMIT = normalizeInteger(process.env.TALLY_ORGANIZATION_LIMIT, 100_000, 1, 100_000);
+// Per-org proposal cap for incremental sync. Watermark causes early termination so 50 is plenty.
+const DEFAULT_PROPOSALS_PER_ORGANIZATION = normalizeInteger(process.env.TALLY_PROPOSALS_PER_ORGANIZATION, 50, 1, 100_000);
+// Default to unlimited so ALL synced orgs get their proposals checked on each run.
+const DEFAULT_PROPOSAL_ORGANIZATION_LIMIT = normalizeInteger(process.env.TALLY_PROPOSAL_ORGANIZATION_LIMIT, 100_000, 1, 100_000);
+// Per-org proposal cap for the active-refresh pass (no watermark, always newest-first).
+const DEFAULT_ACTIVE_REFRESH_LIMIT = normalizeInteger(process.env.TALLY_ACTIVE_REFRESH_LIMIT, 50, 1, 100_000);
 const TALLY_SOURCE = GOVERNANCE_SOURCES.tally;
+
+const TALLY_BACKFILL_ENTITY = "tally:proposals-backfill";
 
 const args = new Set(process.argv.slice(2));
 const options = {
   full: args.has("--full"),
+  backfill: args.has("--backfill"),
   organizationsOnly: args.has("--organizations-only"),
   proposalsOnly: args.has("--proposals-only"),
   organizationIds: readArgValues("--organization-id"),
@@ -169,6 +178,7 @@ async function syncProposals(): Promise<number> {
   let upserted = 0;
   let highestCreatedTs = 0;
 
+  // Stage 1: incremental — newest-first per org, stops at watermark
   for (const organization of organizations) {
     const governorIds = normalizeGovernorIdList(organization.governorIds);
     const orgBudget = { remaining: options.limitProposals };
@@ -212,17 +222,81 @@ async function syncProposals(): Promise<number> {
     last_created_ts: highestCreatedTs || null,
   });
 
+  // Stage 2: active refresh — re-fetch recent proposals for orgs with ongoing votes
+  // Skipped when --full (already fetched everything) or --proposals-only with no org filter
+  if (!options.full) {
+    upserted += await syncActiveProposals();
+  }
+
+  return upserted;
+}
+
+// Stage 2: re-fetch the N most recent proposals for every org Tally flags as having
+// active proposals. Vote counts and status change continuously on-chain, so these
+// need a refresh pass independent of the incremental watermark.
+async function syncActiveProposals(): Promise<number> {
+  const activeOrgs = await withDatabaseRetry("getActiveOrgsForRefresh", () =>
+    db
+      .select({
+        id: tallyOrganizations.id,
+        slug: tallyOrganizations.slug,
+        name: tallyOrganizations.name,
+        governorIds: tallyOrganizations.governorIds,
+      })
+      .from(tallyOrganizations)
+      .where(eq(tallyOrganizations.hasActiveProposals, true))
+      .orderBy(desc(tallyOrganizations.proposalsCount))
+  );
+
+  if (activeOrgs.length === 0) {
+    console.log(`[${TALLY_SOURCE.proposalEntityType}:active] no orgs with active proposals`);
+    return 0;
+  }
+
+  console.log(`[${TALLY_SOURCE.proposalEntityType}:active] refreshing ${activeOrgs.length} orgs with active proposals (no watermark)`);
+  let upserted = 0;
+
+  for (const org of activeOrgs) {
+    const governorIds = normalizeGovernorIdList(org.governorIds);
+    const budget = { remaining: DEFAULT_ACTIVE_REFRESH_LIMIT };
+
+    if (governorIds.length > 0) {
+      for (const governorId of governorIds) {
+        if (budget.remaining <= 0) break;
+        try {
+          const batch = await syncProposalsForOrg(org, { governorId }, budget, true);
+          upserted += batch.upserted;
+        } catch (error) {
+          if (isUnsupportedChainTallyError(error)) {
+            console.warn(`[${TALLY_SOURCE.proposalEntityType}:active] ${org.slug ?? org.id}: skipping governor (unsupported chain): ${governorId}`);
+            continue;
+          }
+          console.warn(`[${TALLY_SOURCE.proposalEntityType}:active] ${org.slug ?? org.id}: error refreshing governor ${governorId}: ${stringifyError(error)}`);
+        }
+      }
+    } else {
+      try {
+        const batch = await syncProposalsForOrg(org, {}, budget, true);
+        upserted += batch.upserted;
+      } catch (error) {
+        console.warn(`[${TALLY_SOURCE.proposalEntityType}:active] ${org.slug ?? org.id}: error during active refresh: ${stringifyError(error)}`);
+      }
+    }
+  }
+
+  console.log(`[${TALLY_SOURCE.proposalEntityType}:active] done upserted=${upserted}`);
   return upserted;
 }
 
 async function syncProposalsForOrg(
   organization: TallyOrganizationSyncRow,
   extraFilters: { governorId?: string },
-  budget: { remaining: number }
+  budget: { remaining: number },
+  noWatermark = false
 ): Promise<{ upserted: number; highestCreatedTs: number }> {
   // Stateless watermark — derive from what's already in the DB for this org.
-  // Skipped when --full is set so the entire history is re-fetched.
-  const orgWatermark = options.full ? 0 : await getOrgProposalWatermark(organization.id);
+  // Skipped when --full is set or noWatermark=true (active-refresh pass).
+  const orgWatermark = (options.full || noWatermark) ? 0 : await getOrgProposalWatermark(organization.id);
 
   let upserted = 0;
   let highestCreatedTs = 0;
@@ -350,6 +424,93 @@ async function upsertProposal(
   );
 }
 
+// ─── Backfill ─────────────────────────────────────────────────────────────────
+
+// Returns all orgs ordered by numeric id ASC, optionally resuming after a given id.
+// Numeric cast ensures "10" sorts correctly after "9" (plain text sort breaks for integer ids).
+async function getAllOrgsForBackfill(afterId?: string): Promise<TallyOrganizationSyncRow[]> {
+  const baseQuery = db
+    .select({
+      id: tallyOrganizations.id,
+      slug: tallyOrganizations.slug,
+      name: tallyOrganizations.name,
+      governorIds: tallyOrganizations.governorIds,
+    })
+    .from(tallyOrganizations);
+
+  if (afterId) {
+    return baseQuery
+      .where(drizzleSql`CAST(${tallyOrganizations.id} AS BIGINT) > ${Number(afterId)}`)
+      .orderBy(drizzleSql`CAST(${tallyOrganizations.id} AS BIGINT) ASC`);
+  }
+
+  return baseQuery.orderBy(drizzleSql`CAST(${tallyOrganizations.id} AS BIGINT) ASC`);
+}
+
+async function runTallyBackfill(): Promise<number> {
+  const state = await getSyncState(db, TALLY_BACKFILL_ENTITY);
+  const resumeAfterId = state?.lastCursor ?? undefined;
+
+  const orgs = await getAllOrgsForBackfill(resumeAfterId);
+  console.log(
+    `[${TALLY_BACKFILL_ENTITY}] ${orgs.length} orgs to backfill` +
+      (resumeAfterId ? ` (resuming after id=${resumeAfterId})` : "")
+  );
+
+  if (orgs.length === 0) {
+    console.log(`[${TALLY_BACKFILL_ENTITY}] nothing to do — all orgs already backfilled`);
+    await safelyUpsertSyncState(db, TALLY_BACKFILL_ENTITY, { last_cursor: null });
+    return 0;
+  }
+
+  let upserted = 0;
+
+  for (const org of orgs) {
+    const governorIds = normalizeGovernorIdList(org.governorIds);
+    // Unlimited budget — backfill fetches complete history for every org
+    const budget = { remaining: Number.MAX_SAFE_INTEGER };
+
+    if (governorIds.length > 0) {
+      for (const governorId of governorIds) {
+        if (budget.remaining <= 0) break;
+        try {
+          const batch = await syncProposalsForOrg(org, { governorId }, budget, true);
+          upserted += batch.upserted;
+        } catch (error) {
+          if (isUnsupportedChainTallyError(error)) {
+            console.warn(
+              `[${TALLY_BACKFILL_ENTITY}] ${org.slug ?? org.id}: skipping governor (unsupported chain): ${governorId}`
+            );
+            continue;
+          }
+          throw error;
+        }
+      }
+    } else {
+      try {
+        const batch = await syncProposalsForOrg(org, {}, budget, true);
+        upserted += batch.upserted;
+      } catch (error) {
+        if (isUnsupportedChainTallyError(error)) {
+          console.warn(`[${TALLY_BACKFILL_ENTITY}] ${org.slug ?? org.id}: skipping (unsupported chain)`);
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    // Checkpoint after each org so an interrupted run can resume
+    await safelyUpsertSyncState(db, TALLY_BACKFILL_ENTITY, { last_cursor: org.id });
+    console.log(
+      `[${TALLY_BACKFILL_ENTITY}] completed org ${org.slug ?? org.id} (id=${org.id}), total upserted=${upserted}`
+    );
+  }
+
+  // Clear cursor so the next monthly run is a fresh full scan
+  await safelyUpsertSyncState(db, TALLY_BACKFILL_ENTITY, { last_cursor: null });
+  return upserted;
+}
+
 // ─── DB queries ───────────────────────────────────────────────────────────────
 
 async function getOrganizationsForProposalSync(): Promise<TallyOrganizationSyncRow[]> {
@@ -385,6 +546,22 @@ async function getOrganizationsForProposalSync(): Promise<TallyOrganizationSyncR
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  if (options.backfill) {
+    console.log("Starting Tally backfill (full historical proposal re-scan for all orgs)...");
+    const dbProposalsBefore = await getDbProposalCount();
+    console.log(`[tally] DB before: ${dbProposalsBefore} proposals`);
+
+    await runSync(db, TALLY_BACKFILL_ENTITY, runTallyBackfill);
+
+    const dbProposalsAfter = await getDbProposalCount();
+    console.log(
+      `[tally] DB after: ${dbProposalsAfter} proposals (${dbProposalsAfter >= dbProposalsBefore ? "+" : ""}${dbProposalsAfter - dbProposalsBefore})`
+    );
+    await refreshPlatformStatsAfterSync(databaseUrl!);
+    console.log("Tally backfill completed.");
+    return;
+  }
+
   console.log("Starting Tally sync...");
 
   const dbOrgsBefore = await getDbOrgCount();

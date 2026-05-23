@@ -45,9 +45,19 @@ LOG=/Users/starit/src/undertide.xyz/v2/undertide-app-v2/logs
 # Adjust --limit based on backlog and cost tolerance.
 0 */6 * * * cd $DIR && $PNPM translate:proposals --limit 500 >> $LOG/translate.log 2>&1
 
+# ── Sync health check ─────────────────────────────────────────────────────────
+# Exits 1 if any sync is critically stale. Wire to your alerting of choice:
+#   ... || echo "undertide sync stale" | mail -s "sync alert" you@example.com
+# Or just monitor the log for lines containing "STALE".
+0 * * * * cd $DIR && $PNPM check:sync:health >> $LOG/health.log 2>&1
+
 # ── Monthly backfill ──────────────────────────────────────────────────────────
 # Proposals: full historical re-scan to fill any gaps the incremental sync may have missed.
 # Spaces: --full re-scans all spaces to pick up renames/deletions missed by incremental.
 # Both run at 3am on the 1st of each month; safe to interrupt and re-run.
 0 3 1 * * cd $DIR && $PNPM sync:snapshot:backfill >> $LOG/backfill.log 2>&1
 30 3 1 * * cd $DIR && $PNPM sync:snapshot:spaces --full >> $LOG/spaces-full.log 2>&1
+#
+# Tally: full historical proposal re-scan across all known orgs.
+# Runs at 4am on the 1st. Resumable — if interrupted, re-running picks up from last completed org.
+0 4 1 * * cd $DIR && $PNPM sync:tally:backfill >> $LOG/tally-backfill.log 2>&1
