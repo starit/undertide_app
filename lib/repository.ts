@@ -639,23 +639,26 @@ async function fetchSnapshotSyncStates(entityTypes?: string[]): Promise<Snapshot
 
   try {
     const db = getDb();
-    const statesQuery = db.select().from(snapshotSyncState);
-    const runsQuery = db.select().from(snapshotSyncRuns);
+    const entityFilter =
+      entityTypes && entityTypes.length > 0
+        ? inArray(snapshotSyncState.entityType, entityTypes)
+        : undefined;
 
-    const states = await (entityTypes && entityTypes.length > 0
-      ? statesQuery.where(inArray(snapshotSyncState.entityType, entityTypes))
-      : statesQuery);
+    const runsQuery = db
+      .selectDistinctOn([snapshotSyncRuns.entityType])
+      .from(snapshotSyncRuns)
+      .orderBy(snapshotSyncRuns.entityType, desc(snapshotSyncRuns.createdAt));
 
-    const runs = await (entityTypes && entityTypes.length > 0
-      ? runsQuery.where(inArray(snapshotSyncRuns.entityType, entityTypes)).orderBy(desc(snapshotSyncRuns.createdAt))
-      : runsQuery.orderBy(desc(snapshotSyncRuns.createdAt)));
+    const [states, latestRunRows] = await Promise.all([
+      entityFilter
+        ? db.select().from(snapshotSyncState).where(entityFilter)
+        : db.select().from(snapshotSyncState),
+      entityFilter
+        ? runsQuery.where(inArray(snapshotSyncRuns.entityType, entityTypes!))
+        : runsQuery,
+    ]);
 
-    const latestRuns = new Map<string, typeof snapshotSyncRuns.$inferSelect>();
-    for (const run of runs) {
-      if (!latestRuns.has(run.entityType)) {
-        latestRuns.set(run.entityType, run);
-      }
-    }
+    const latestRuns = new Map(latestRunRows.map((r) => [r.entityType, r]));
 
     return states.map((state) => ({
       ...state,
@@ -729,7 +732,7 @@ async function fetchTallyProposals(query: TallyProposalFilters = {}): Promise<Ta
     }
 
     if (normalizedStatus && normalizedStatus !== "All") {
-      conditions.push(eq(sql<string>`lower(${tallyProposals.status})`, normalizedStatus.toLowerCase()));
+      conditions.push(eq(tallyProposals.status, normalizedStatus.toLowerCase()));
     }
 
     if (query.chainId) {
@@ -1171,7 +1174,7 @@ function getTallyProposalUrl(organizationSlug: string | null, proposalId: string
 
 
 function applySpaceFilters(items: Space[], query: SpaceFilters) {
-  // verified and q are already filtered in SQL; category is handled here on the smaller result set
+  // verified, q, and category are all filtered in SQL; only activityScore sort needs in-memory work
   const filtered = items.filter((space) => {
     const matchesCategory = query.category && query.category !== "All" ? space.categories.includes(query.category) : true;
     return matchesCategory;

@@ -3,7 +3,6 @@ import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
 import { getSpaceBySlug, listSpaceProposals, listSpaces } from "@/lib/repository";
-import { getServerLocale } from "@/lib/i18n-server";
 import { ProposalsBrowser } from "@/components/proposals-browser";
 import { ScamWarning } from "@/components/scam-warning";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -46,11 +45,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function SpaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const tSpaces = await getTranslations("spaces");
-  const locale = await getServerLocale();
   const { slug } = await params;
   const [space, proposals] = await Promise.all([
     getSpaceBySlug(slug),
-    listSpaceProposals(slug, { sort: "time", locale, limit: INITIAL_SPACE_PROPOSAL_LIMIT }),
+    listSpaceProposals(slug, { sort: "time", limit: INITIAL_SPACE_PROPOSAL_LIMIT }),
   ]);
 
   if (!space) notFound();

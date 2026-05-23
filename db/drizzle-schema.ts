@@ -130,6 +130,12 @@ export const snapshotProposals = pgTable(
     endAtIdx: index("idx_snapshot_proposals_end_at").on(table.endAt),
     authorIdx: index("idx_snapshot_proposals_author").on(table.author),
     titleTrgmIdx: index("idx_snapshot_proposals_title_trgm").using("gin", table.title.op("gin_trgm_ops")),
+    feedIdx: index("idx_snapshot_proposals_feed")
+      .on(table.createdAt.desc())
+      .where(sql`${table.flagged} = false`),
+    spaceFeedIdx: index("idx_snapshot_proposals_space_feed")
+      .on(table.spaceId, table.createdAt.desc())
+      .where(sql`${table.flagged} = false`),
   })
 );
 

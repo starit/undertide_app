@@ -1,0 +1,2 @@
+CREATE INDEX "idx_snapshot_proposals_feed" ON "snapshot_proposals" USING btree ("created_at" DESC NULLS LAST) WHERE "snapshot_proposals"."flagged" = false;--> statement-breakpoint
+CREATE INDEX "idx_snapshot_proposals_space_feed" ON "snapshot_proposals" USING btree ("space_id","created_at" DESC NULLS LAST) WHERE "snapshot_proposals"."flagged" = false;

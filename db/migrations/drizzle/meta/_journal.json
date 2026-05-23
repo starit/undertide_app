@@ -50,6 +50,13 @@
       "when": 1779535139252,
       "tag": "0006_silky_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779536347621,
+      "tag": "0007_empty_gabe_jones",
+      "breakpoints": true
     }
   ]
 }
