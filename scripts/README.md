@@ -2,6 +2,234 @@
 
 This directory contains operational scripts for sync, backfill, migration, and translation tasks.
 
+## Snapshot Sync — Data Maintenance Guide
+
+The Snapshot sync is split into three scripts with clearly separated responsibilities.
+
+### First-time setup
+
+Run these once in order when setting up a fresh database:
+
+```bash
+pnpm sync:snapshot:spaces      # sync all spaces (incremental after first run)
+pnpm sync:snapshot:backfill    # full historical proposal scan, newest → oldest
+                               # safe to interrupt and resume; takes hours on first run
+pnpm sync:snapshot:proposals   # verify incremental watermark was seeded correctly
+pnpm link:protocols            # build protocol links from synced data
+pnpm translate:proposals --limit 1000000  # backfill translations (optional, slow)
+```
+
+---
+
+### 1. Daily incremental sync (run frequently, e.g. every 10–30 minutes)
+
+Fetches only what has changed since the last run:
+- **New spaces** — watermark derived automatically from `MAX(raw->>'created')` in the local DB; no state file needed
+- **New proposals** created after the stored watermark
+- **Active proposals** re-fetched to keep votes and scores current
+- **Recently closed proposals** (ended in the last 48 h) re-fetched to capture finalized scores
+
+```bash
+pnpm sync:snapshot:spaces                        # stateless — derives watermark from DB automatically
+pnpm sync:snapshot:proposals --from-db           # derives watermark from MAX(created_ts) in DB
+```
+
+Or run both at once via the orchestrator:
+
+```bash
+pnpm sync:snapshot
+```
+
+**Notes:**
+- `sync:snapshot:spaces` automatically does a full scan on first run (empty table) and incremental on subsequent runs. No configuration needed.
+- `sync:snapshot:proposals --from-db` derives the watermark from the actual data in `snapshot_proposals`, so it can never go stale or corrupt. Recommended over relying on the stored sync state.
+- Platform stats are refreshed automatically at the end of each run.
+
+---
+
+### 2. Monthly full re-sync (run once a month or when data gaps are suspected)
+
+Re-scans the entire Snapshot proposal history to catch anything the incremental sync may have missed (e.g. proposals updated retroactively, edge-case gaps):
+
+```bash
+pnpm sync:snapshot:backfill
+```
+
+The backfill tracks its own cursor under the `"proposals-backfill"` state entity, completely separate from the incremental sync state. You can safely run it while the incremental sync continues to operate.
+
+To limit the scan to a recent window (e.g. last 90 days) rather than all history:
+
+```bash
+# --stop-at accepts a Unix timestamp
+pnpm sync:snapshot:backfill --stop-at $(date -v-90d +%s)   # macOS
+pnpm sync:snapshot:backfill --stop-at $(date -d '90 days ago' +%s)  # Linux
+```
+
+**Notes:**
+- Safe to interrupt. Re-run the same command to resume from where it stopped.
+- Does not affect the incremental watermark unless it completes fully and no watermark exists yet.
+- After a full backfill, re-run `pnpm link:protocols` to refresh protocol links.
+
+---
+
+### 3. Targeted sync — fix a specific space or proposal
+
+Use when you notice a single record is missing or stale and don't want to wait for the next scheduled run.
+
+**Sync one or more spaces:**
+
+```bash
+pnpm sync:snapshot:spaces --space-id uniswap.eth
+pnpm sync:snapshot:spaces --space-id uniswap.eth --space-id aave.eth
+```
+
+**Sync one or more proposals:**
+
+```bash
+pnpm sync:snapshot:backfill --proposal-id 0xabc123…
+pnpm sync:snapshot:backfill --proposal-id 0xabc123… --proposal-id 0xdef456…
+```
+
+Both commands upsert the record(s) immediately and refresh the affected space proposal counts. They do not modify the incremental watermark or backfill cursor.
+
+To also re-translate a proposal after syncing:
+
+```bash
+npx tsx scripts/translate-proposals.ts --proposal-id 0xabc123… --overwrite
+```
+
+---
+
+### 4. Post-sync protocol linking
+
+Run after any sync that adds new spaces or proposals to rebuild the `governance_protocols` / `governance_protocol_sources` tables:
+
+```bash
+pnpm link:protocols
+```
+
+This is read-only against the Snapshot/Tally tables and safe to run at any time.
+
+---
+
+### Sync state reference
+
+Run history is stored in `snapshot_sync_state` (keyed by `entity_type`) and `snapshot_sync_runs`:
+
+| Entity type | Managed by | What is tracked |
+|---|---|---|
+| `spaces` | `sync-snapshot-spaces.ts` | `last_success_at`, `last_error` only — watermark is derived live from the DB, not stored |
+| `proposals` | `sync-snapshot-proposals.ts` | `last_created_ts` (incremental watermark) |
+| `proposals-backfill` | `sync-snapshot-backfill.ts` | `last_cursor` (backfill pagination cursor, independent of incremental) |
+
+To inspect current state:
+
+```sql
+SELECT entity_type, last_success_at, last_created_ts, last_cursor, last_error
+FROM snapshot_sync_state
+ORDER BY entity_type;
+```
+
+**Spaces watermark** is always `MAX((raw->>'created')::bigint)` from `snapshot_spaces` — it cannot go stale or corrupt. Use `--full` to force a complete re-scan if needed.
+
+To reset the proposals incremental watermark and force a re-fetch from a specific date (use with care):
+
+```sql
+-- Example: reset to 30 days ago
+UPDATE snapshot_sync_state
+SET last_created_ts = EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')::bigint,
+    last_cursor = NULL
+WHERE entity_type = 'proposals';
+```
+
+---
+
+### CLI flag reference
+
+**`sync-snapshot-spaces.ts`**
+
+| Flag | Description |
+|---|---|
+| `--space-id <id>` | Fetch and upsert a specific space. Repeatable. Skips normal sync. |
+| `--full` | Force a full scan from the beginning, ignoring the DB watermark. |
+
+**`sync-snapshot-proposals.ts`**
+
+| Flag | Description |
+|---|---|
+| `--from-db` | Derive the watermark from `MAX(created_ts)` in the `snapshot_proposals` table instead of trusting the sync state. Persists the derived value so future runs use it automatically. Best first step when the watermark is suspected to be stale or corrupted. |
+| `--force` | Run even if no watermark exists; falls back to a 7-day window. |
+| `--since <unix_ts>` | Override the stored watermark for this run only (not persisted). |
+| `--reset-watermark <unix_ts>` | Permanently overwrite the stored watermark and exit without syncing. |
+
+**`sync-snapshot-backfill.ts`**
+
+| Flag | Description |
+|---|---|
+| `--proposal-id <id>` | Fetch and upsert a specific proposal. Repeatable. Skips full backfill. |
+| `--stop-at <unix_ts>` | Stop scanning once proposals older than this timestamp are reached. |
+
+---
+
+---
+
+### Troubleshooting — incremental sync starts from years ago
+
+**Symptom:** `sync:snapshot:proposals` logs show it fetching proposals from a very old date (e.g. 2020), even though sync has been running for a long time.
+
+**Root cause:** The previous version of `sync-snapshot.ts` had a cursor/watermark race condition. If a full scan was interrupted, the resumed run processed only old proposals and wrote their timestamp as the watermark — resulting in a valid-looking but years-old `last_created_ts`.
+
+The script now detects this and refuses to run if the stored watermark is older than 90 days, printing instructions. If it's older than 30 days it warns but still proceeds.
+
+**Fix — use `--from-db` (recommended, and the standard daily usage)**
+
+```bash
+pnpm sync:snapshot:proposals --from-db
+```
+
+Reads `MAX(created_ts)` from `snapshot_proposals`, saves it as the new watermark, then syncs from that point forward. This is also the recommended command for routine incremental syncs — it can never go stale.
+
+**Fix — option 2: manually reset the watermark to a specific date**
+
+```bash
+# Reset to 3 days ago (macOS)
+pnpm sync:snapshot:proposals --reset-watermark $(date -v-3d +%s)
+
+# Reset to 3 days ago (Linux)
+pnpm sync:snapshot:proposals --reset-watermark $(date -d '3 days ago' +%s)
+
+# Then run the incremental sync normally
+pnpm sync:snapshot:proposals
+```
+
+Or via SQL:
+
+```sql
+UPDATE snapshot_sync_state
+SET last_created_ts = EXTRACT(EPOCH FROM NOW() - INTERVAL '3 days')::bigint,
+    last_cursor = NULL
+WHERE entity_type = 'proposals';
+```
+
+**One-off recovery run (without permanently changing the watermark):**
+
+```bash
+# Sync from 3 days ago for this run only; watermark advances normally from there
+pnpm sync:snapshot:proposals --since $(date -v-3d +%s)   # macOS
+pnpm sync:snapshot:proposals --since $(date -d '3 days ago' +%s)   # Linux
+```
+
+---
+
+### Environment variables (Snapshot sync)
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL_UNPOOLED` | Preferred for scripts (direct Neon connection, no pooler). |
+| `DATABASE_URL` | Fallback if unpooled is unset. |
+
+
+
 ## Link Governance Protocols (`link-governance-protocols.ts`)
 
 Script path: [`link-governance-protocols.ts`](./link-governance-protocols.ts).  

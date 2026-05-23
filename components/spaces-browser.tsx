@@ -11,17 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const categoryOptions = [
-  { value: "All",        label: "All" },
-  { value: "protocol",   label: "Protocol" },
-  { value: "social",     label: "Social" },
-  { value: "service",    label: "Service" },
-  { value: "investment", label: "Investment" },
+  { value: "All",        i18nKey: "all" as const },
+  { value: "protocol",   i18nKey: "protocol" as const },
+  { value: "social",     i18nKey: "social" as const },
+  { value: "service",    i18nKey: "service" as const },
+  { value: "investment", i18nKey: "investment" as const },
   { value: "defi",       label: "DeFi" },
-  { value: "creator",    label: "Creator" },
-  { value: "collector",  label: "Collector" },
-  { value: "grant",      label: "Grant" },
-  { value: "gaming",     label: "Gaming" },
-  { value: "media",      label: "Media" },
+  { value: "creator",    i18nKey: "creator" as const },
+  { value: "collector",  i18nKey: "collector" as const },
+  { value: "grant",      i18nKey: "grant" as const },
+  { value: "gaming",     i18nKey: "gaming" as const },
+  { value: "media",      i18nKey: "media" as const },
   { value: "defai",      label: "DeFAI" },
   { value: "meme",       label: "Meme" },
   { value: "layer-2",    label: "Layer 2" },
@@ -179,7 +179,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
             onClick={() => setCategory(option.value)}
             className="shrink-0"
           >
-            {option.label}
+            {"i18nKey" in option ? tSpaces(`categories.${option.i18nKey}`) : option.label}
           </Button>
         ))}
       </div>

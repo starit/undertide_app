@@ -51,11 +51,6 @@ export const snapshotSpaces = pgTable(
   (table) => ({
     networkIdx: index("idx_snapshot_spaces_network").on(table.network),
     createdAtIdx: index("idx_snapshot_spaces_created_at").on(table.createdAt),
-    verifiedActivityIdx: index("idx_snapshot_spaces_verified_activity")
-      .on(table.proposalCount.desc(), table.memberCount.desc(), table.name)
-      .where(sql`${table.flagged} = false AND ${table.verified} = true`),
-    nameTrgmIdx: index("idx_snapshot_spaces_name_trgm").using("gin", table.name.op("gin_trgm_ops")),
-    categoriesGinIdx: index("idx_snapshot_spaces_categories_gin").using("gin", table.categories),
   })
 );
 
@@ -129,13 +124,6 @@ export const snapshotProposals = pgTable(
     createdAtIdx: index("idx_snapshot_proposals_created_at").on(table.createdAt),
     endAtIdx: index("idx_snapshot_proposals_end_at").on(table.endAt),
     authorIdx: index("idx_snapshot_proposals_author").on(table.author),
-    titleTrgmIdx: index("idx_snapshot_proposals_title_trgm").using("gin", table.title.op("gin_trgm_ops")),
-    feedIdx: index("idx_snapshot_proposals_feed")
-      .on(table.createdAt.desc())
-      .where(sql`${table.flagged} = false`),
-    spaceFeedIdx: index("idx_snapshot_proposals_space_feed")
-      .on(table.spaceId, table.createdAt.desc())
-      .where(sql`${table.flagged} = false`),
   })
 );
 
@@ -158,25 +146,6 @@ export const proposalTranslations = pgTable(
     proposalIdIdx: index("idx_proposal_translations_proposal_id").on(table.proposalId),
   })
 );
-
-export const platformStats = pgTable("platform_stats", {
-  id: text("id").primaryKey().default("global"),
-  spacesCount: integer("spaces_count").notNull().default(0),
-  verifiedSpacesCount: integer("verified_spaces_count").notNull().default(0),
-  proposalsCount: integer("proposals_count").notNull().default(0),
-  activeProposalsCount: integer("active_proposals_count").notNull().default(0),
-  translatedProposalsCount: integer("translated_proposals_count").notNull().default(0),
-  translationsCount: integer("translations_count").notNull().default(0),
-  translationLocaleCounts: jsonb("translation_locale_counts")
-    .$type<Record<string, number>>()
-    .notNull()
-    .default(sql`'{}'::jsonb`),
-  lastSuccessfulSpaceSyncAt: timestamp("last_successful_space_sync_at", { withTimezone: true }),
-  lastSuccessfulProposalSyncAt: timestamp("last_successful_proposal_sync_at", { withTimezone: true }),
-  refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull().defaultNow(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 export const snapshotSyncState = pgTable("snapshot_sync_state", {
   entityType: text("entity_type").primaryKey(),
@@ -333,7 +302,6 @@ export const schema = {
   snapshotSpaceMembers,
   snapshotProposals,
   proposalTranslations,
-  platformStats,
   snapshotSyncState,
   snapshotSyncRuns,
   tallyOrganizations,

@@ -27,6 +27,9 @@ const requestedLocales = readArgValues("--locale");
 const limit = Number(readArgValue("--limit") || defaultLimit);
 const overwrite = args.has("--overwrite");
 
+const LOW_VALUE_MIN_TITLE_LENGTH = 20;
+const LOW_VALUE_MIN_BODY_LENGTH = 80;
+
 const localeConfigs: Record<string, { label: string; instruction: string }> = {
   zh: {
     label: "Simplified Chinese",
@@ -196,35 +199,41 @@ async function main() {
             summary: excerpt(item.proposal.body ?? "", 220),
           });
 
-          await db
-            .insert(proposalTranslations)
-            .values({
-              proposalId: item.proposal.id,
-              locale,
-              title: translated.title,
-              body: translated.body,
-              summary: translated.summary,
-              translatedBy: deepseekModel,
-            })
-            .onConflictDoUpdate({
-              target: [proposalTranslations.proposalId, proposalTranslations.locale],
-              set: {
+          await withRetry(`upsert translation ${item.proposal.id}/${locale}`, () =>
+            db
+              .insert(proposalTranslations)
+              .values({
+                proposalId: item.proposal.id,
+                locale,
                 title: translated.title,
                 body: translated.body,
                 summary: translated.summary,
                 translatedBy: deepseekModel,
-                updatedAt: new Date(),
-              },
-            });
+              })
+              .onConflictDoUpdate({
+                target: [proposalTranslations.proposalId, proposalTranslations.locale],
+                set: {
+                  title: translated.title,
+                  body: translated.body,
+                  summary: translated.summary,
+                  translatedBy: deepseekModel,
+                  updatedAt: new Date(),
+                },
+              })
+          );
 
           translatedCount += 1;
           console.log(`[translate] ${item.proposal.id} -> ${locale}`);
         } catch (error) {
           failedCount += 1;
-          console.error(
-            `[translate] failed ${item.proposal.id} -> ${locale}:`,
-            error instanceof Error ? error.message : String(error)
-          );
+          let errorMsg = error instanceof Error ? error.message : String(error);
+          if (error && typeof error === "object") {
+            const e = error as Record<string, unknown>;
+            if (e.code) errorMsg += ` [pg_code=${e.code}]`;
+            if (e.detail) errorMsg += ` [detail=${e.detail}]`;
+            if (e.constraint) errorMsg += ` [constraint=${e.constraint}]`;
+          }
+          console.error(`[translate] failed ${item.proposal.id} -> ${locale}:`, errorMsg);
         } finally {
           processedLocaleTargets += 1;
           printProgress(
@@ -278,8 +287,8 @@ async function getSourceProposals(batchLimit: number, locales: string[], proposa
             AND pt.locale IN (${drizzleSql.raw(localeList)})
         ) < ${locales.length}
         AND NOT (
-          COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < 80
-          AND LENGTH(TRIM(${snapshotProposals.title})) < 12
+          COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < ${LOW_VALUE_MIN_BODY_LENGTH}
+          AND LENGTH(TRIM(${snapshotProposals.title})) <= ${LOW_VALUE_MIN_TITLE_LENGTH}
         )
         AND (
           TRIM(${snapshotProposals.title}) != ''
@@ -320,8 +329,8 @@ async function countSourceProposals(locales: string[], proposalId?: string) {
             AND pt.locale IN (${drizzleSql.raw(localeList)})
         ) < ${locales.length}
         AND NOT (
-          COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < 80
-          AND LENGTH(TRIM(${snapshotProposals.title})) < 12
+          COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < ${LOW_VALUE_MIN_BODY_LENGTH}
+          AND LENGTH(TRIM(${snapshotProposals.title})) <= ${LOW_VALUE_MIN_TITLE_LENGTH}
         )
         AND (
           TRIM(${snapshotProposals.title}) != ''
@@ -728,6 +737,28 @@ function validateLocales(locales: string[]) {
 function sanitizeText(value: string) {
   return value.replace(/\u0000/g, "").trim();
 }
+async function withRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  const retryLimit = 3;
+  const baseMs = 1000;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retryLimit; attempt++) {
+    try {
+      const result = await operation();
+      if (attempt > 0) console.log(`[db] recovered ${label} after retry ${attempt}`);
+      return result;
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error);
+      const retryable = /fetch failed|connection|timeout|temporar|network|econn|etimedout|socket/i.test(msg);
+      if (attempt === retryLimit || !retryable) break;
+      const waitMs = baseMs * 2 ** attempt;
+      console.warn(`[db] ${label} failed (attempt ${attempt + 1}/${retryLimit + 1}): ${msg}`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 
 function buildMetaExcerpt(body: string, fallbackSummary: string) {
   const source = excerpt(body, 260) || fallbackSummary.trim();
@@ -908,7 +939,7 @@ function getLowValueSkipReason(title: string, body: string) {
     return "empty title/body";
   }
 
-  if (normalizedBody.length < 80 && normalizedTitle.length < 12) {
+  if (normalizedBody.length < LOW_VALUE_MIN_BODY_LENGTH && normalizedTitle.length <= LOW_VALUE_MIN_TITLE_LENGTH) {
     return "content too short";
   }
 
