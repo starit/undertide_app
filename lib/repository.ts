@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
   proposalTranslations,
+  platformStats,
   snapshotProposals,
   snapshotSyncRuns,
   snapshotSyncState,
@@ -21,6 +22,7 @@ import {
   TallyOrganization,
   TallyProposal,
 } from "@/lib/types";
+import { PLATFORM_STATS_ROW_ID } from "@/lib/platform-stats-refresh";
 
 type ProposalFilters = {
   q?: string;
@@ -124,6 +126,8 @@ type ProposalTranslationRecord = typeof proposalTranslations.$inferSelect;
 type SnapshotSyncStateRecord = typeof snapshotSyncState.$inferSelect & {
   latestRun: typeof snapshotSyncRuns.$inferSelect | null;
 };
+
+type PlatformStatsRecord = typeof platformStats.$inferSelect;
 
 type TallyOrganizationRecord = typeof tallyOrganizations.$inferSelect;
 type TallyProposalRecord = typeof tallyProposals.$inferSelect;
@@ -558,11 +562,7 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
             .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
             .where(and(...conditions));
 
-    const orderedQuery =
-      query.sort === "heat"
-        ? baseQuery.orderBy(desc(proposalHeatSortSql()), desc(snapshotProposals.createdAt))
-        : baseQuery.orderBy(desc(snapshotProposals.createdAt));
-
+    const orderedQuery = baseQuery.orderBy(desc(snapshotProposals.createdAt));
     const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
     if (limit) {
       return await orderedQuery.limit(limit);
@@ -784,9 +784,23 @@ async function fetchPlatformStats(): Promise<PlatformStats> {
     return emptyPlatformStats();
   }
 
-  try {
-    const db = getDb();
+  const db = getDb();
 
+  try {
+    const [record] = await db
+      .select()
+      .from(platformStats)
+      .where(eq(platformStats.id, PLATFORM_STATS_ROW_ID))
+      .limit(1);
+
+    if (record) {
+      return mapPlatformStats(record);
+    }
+  } catch {
+    // Fall through to live counts for deployments that have not run the stats migration yet.
+  }
+
+  try {
     const [
       spacesSummaryRows,
       proposalsSummaryRows,
@@ -854,6 +868,20 @@ async function fetchPlatformStats(): Promise<PlatformStats> {
   } catch {
     return emptyPlatformStats();
   }
+}
+
+function mapPlatformStats(record: PlatformStatsRecord): PlatformStats {
+  return {
+    spacesCount: record.spacesCount,
+    verifiedSpacesCount: record.verifiedSpacesCount,
+    proposalsCount: record.proposalsCount,
+    activeProposalsCount: record.activeProposalsCount,
+    translatedProposalsCount: record.translatedProposalsCount,
+    translationsCount: record.translationsCount,
+    translationLocaleCounts: record.translationLocaleCounts,
+    lastSuccessfulSpaceSyncAt: record.lastSuccessfulSpaceSyncAt?.toISOString() ?? null,
+    lastSuccessfulProposalSyncAt: record.lastSuccessfulProposalSyncAt?.toISOString() ?? null,
+  };
 }
 
 function mapSpace(space: SlimSpaceRecord): Space {
@@ -1065,13 +1093,6 @@ function computeActivityScore(memberCount: number, proposalCount: number) {
 function computeProposalHeat(scoresTotal: string | null, memberCount: number) {
   const score = scoresTotal ? Number(scoresTotal) : 0;
   return Math.max(10, Math.min(99, Math.round(Math.log10(score + 10) * 24 + Math.log10(memberCount + 10) * 12)));
-}
-
-function proposalHeatSortSql() {
-  return sql<number>`(
-    (ln((coalesce(${snapshotProposals.scoresTotal}, 0)::double precision + 10)) / ln(10)) * 24
-    + (ln((${snapshotSpaces.memberCount})::double precision + 10) / ln(10)) * 12
-  )`;
 }
 
 function mapProposalStatus(state: string): ProposalStatus {

@@ -77,11 +77,9 @@ export function SearchResults({
         const [proposalsResponse, spacesResponse] = await Promise.all([
           fetch(`/api/snapshot/proposals?${searchParams.toString()}`, {
             signal: controller.signal,
-            cache: "no-store",
           }),
           fetch(`/api/snapshot/spaces?${searchParams.toString()}`, {
             signal: controller.signal,
-            cache: "no-store",
           }),
         ]);
 

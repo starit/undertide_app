@@ -93,7 +93,6 @@ export function ProposalsBrowser({
       try {
         const response = await fetch(`/api/snapshot/proposals?${searchParams.toString()}`, {
           signal: controller.signal,
-          cache: "no-store",
         });
 
         if (!response.ok) {

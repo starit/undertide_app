@@ -89,7 +89,6 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
       try {
         const response = await fetch(`/api/snapshot/spaces?${searchParams.toString()}`, {
           signal: controller.signal,
-          cache: "no-store",
         });
 
         if (!response.ok) {

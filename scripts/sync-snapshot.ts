@@ -9,6 +9,7 @@ import {
   snapshotSyncRuns,
   snapshotSyncState,
 } from "../db/drizzle-schema";
+import { refreshPlatformStats } from "../lib/platform-stats-refresh";
 
 const HUB_URL = "https://hub.snapshot.org/graphql";
 const SPACE_PAGE_SIZE = 50;
@@ -55,7 +56,19 @@ async function main() {
     await runSync("proposals", syncProposals);
   }
 
+  await refreshPlatformStatsAfterSync();
+
   console.log("Snapshot sync completed.");
+}
+
+async function refreshPlatformStatsAfterSync() {
+  try {
+    await refreshPlatformStats(databaseUrl);
+    console.log("[platform_stats] refreshed");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[platform_stats] refresh failed: ${message}`);
+  }
 }
 
 async function runSync(entityType: string, task: () => Promise<number>) {
