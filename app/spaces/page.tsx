@@ -4,7 +4,7 @@ import { getPlatformStats, listSpaces } from "@/lib/repository";
 import { SectionHeading } from "@/components/section-heading";
 import { SpacesBrowser } from "@/components/spaces-browser";
 
-const INITIAL_SPACE_LIMIT = 200;
+const INITIAL_SPACE_LIMIT = 50;
 
 export const metadata: Metadata = {
   title: "Governance Spaces",
@@ -29,7 +29,7 @@ export default async function SpacesPage() {
         description={tSpaces("description")}
       />
       <div className="mt-10">
-        <SpacesBrowser spaces={spaces} totalSpacesCount={stats.spacesCount} />
+        <SpacesBrowser spaces={spaces} totalSpacesCount={stats.spacesCount} initialLoadLimit={INITIAL_SPACE_LIMIT} />
       </div>
     </section>
   );

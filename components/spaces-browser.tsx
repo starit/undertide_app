@@ -32,7 +32,7 @@ const categoryOptions = [
 
 type CategoryValue = (typeof categoryOptions)[number]["value"];
 
-export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; totalSpacesCount: number }) {
+export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200 }: { spaces: Space[]; totalSpacesCount: number; initialLoadLimit?: number }) {
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
   const tSpaces = useTranslations("spaces");
@@ -72,7 +72,11 @@ export function SpacesBrowser({ spaces, totalSpacesCount }: { spaces: Space[]; t
     const requestKey = searchParams.toString();
     if (!skippedInitialRequestRef.current) {
       skippedInitialRequestRef.current = true;
-      completedRequestKeyRef.current = requestKey;
+      // Use initialLoadLimit (not the API's 200) so that if the user resets
+      // filters after changing them, the keys won't match and a fresh 200-item
+      // fetch is triggered rather than showing the smaller initial set.
+      const initialKey = new URLSearchParams({ sort: sort.toLowerCase(), limit: String(initialLoadLimit), ...(verifiedOnly ? { verified: "true" } : {}) }).toString();
+      completedRequestKeyRef.current = initialKey;
       return;
     }
 
