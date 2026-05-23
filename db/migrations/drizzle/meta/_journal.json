@@ -43,6 +43,13 @@
       "when": 1779525838089,
       "tag": "0005_swift_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779535139252,
+      "tag": "0006_silky_chat",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,7 @@ import { PLATFORM_STATS_ROW_ID } from "@/lib/platform-stats-refresh";
 type ProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
-  sort?: "time" | "heat";
+  sort?: "time";
   spaceSlug?: string;
   limit?: number;
   locale?: string;
@@ -38,7 +38,7 @@ type ProposalFilters = {
 type NormalizedProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
-  sort: "time" | "heat";
+  sort: "time";
   spaceSlug?: string;
   limit?: number;
   locale?: string;
@@ -144,11 +144,7 @@ export const getSpaceBySlug = cache(async (slug: string): Promise<Space | null> 
 export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
   const normalizedQuery = normalizeProposalFilters(query);
   const records = await getCachedProposals(normalizedQuery);
-  // time sort + limit are fully handled in SQL; skip in-memory pass
-  if (normalizedQuery.sort === "time" && normalizedQuery.limit) {
-    return records.map((record) => mapProposal(record, { includeBody: false }));
-  }
-  return applyProposalFilters(records.map((record) => mapProposal(record, { includeBody: false })), normalizedQuery);
+  return records.map((record) => mapProposal(record, { includeBody: false }));
 }
 
 export async function getProposalById(id: string, locale?: string): Promise<Proposal | null> {
@@ -297,12 +293,14 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
   try {
     const db = getDb();
 
+    const categoryJson = query.category && query.category !== "All" ? JSON.stringify([query.category]) : undefined;
     const conditions: (SQL | undefined)[] = [
       eq(snapshotSpaces.flagged, false),
       typeof query.verified === "boolean"
         ? eq(snapshotSpaces.verified, query.verified)
         : undefined,
       query.q ? ilike(snapshotSpaces.name, `%${query.q.trim()}%`) : undefined,
+      categoryJson ? sql`${snapshotSpaces.categories} @> ${categoryJson}::jsonb` : undefined,
     ];
 
     const baseQuery = db
@@ -332,15 +330,11 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
       .from(snapshotSpaces)
       .where(and(...conditions));
 
-    // followers sort is fully expressible in SQL; push limit when no category post-filter needed
     if (query.sort === "followers") {
-      const ordered = baseQuery.orderBy(desc(snapshotSpaces.memberCount), snapshotSpaces.name);
-      return await ordered.limit(query.limit && !query.category ? query.limit : 2000);
+      return await baseQuery.orderBy(desc(snapshotSpaces.memberCount), snapshotSpaces.name).limit(query.limit ?? 2000);
     }
 
-    // activity sort needs in-memory computation; pull enough rows for post-filter
-    const ordered = baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name);
-    return await ordered.limit(query.limit && !query.category ? query.limit : 2000);
+    return await baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name).limit(query.limit ?? 2000);
   } catch {
     return [];
   }
@@ -377,7 +371,7 @@ function normalizeProposalFilters(query: ProposalFilters = {}): NormalizedPropos
   return {
     q: normalizeOptionalString(query.q),
     status,
-    sort: query.sort === "heat" ? "heat" : "time",
+    sort: "time",
     spaceSlug: normalizeOptionalString(query.spaceSlug),
     limit: typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined,
     locale: normalizeTranslationLocale(query.locale),
@@ -564,6 +558,7 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
             .where(and(...conditions));
 
     const orderedQuery = baseQuery.orderBy(desc(snapshotProposals.createdAt));
+
     const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
     if (limit) {
       return await orderedQuery.limit(limit);
@@ -942,7 +937,6 @@ function mapProposal(
     status: mapProposalStatus(proposal.state),
     publishedAt: fromUnixSeconds(proposal.createdTs),
     closesAt: fromUnixSeconds(proposal.endTs),
-    heat: computeProposalHeat(proposal.scoresTotal, space.memberCount),
     votesCount: proposal.votesCount,
     type: proposal.type ?? null,
     labels: parseStringArray(proposal.labels),
@@ -1091,10 +1085,6 @@ function computeActivityScore(memberCount: number, proposalCount: number) {
   return Math.max(8, Math.min(99, Math.round(Math.log10(memberCount + 10) * 20 + Math.log10(proposalCount + 1) * 18)));
 }
 
-function computeProposalHeat(scoresTotal: string | null, memberCount: number) {
-  const score = scoresTotal ? Number(scoresTotal) : 0;
-  return Math.max(10, Math.min(99, Math.round(Math.log10(score + 10) * 24 + Math.log10(memberCount + 10) * 12)));
-}
 
 function mapProposalStatus(state: string): ProposalStatus {
   const normalized = state.toLowerCase();
@@ -1179,15 +1169,6 @@ function getTallyProposalUrl(organizationSlug: string | null, proposalId: string
   return `https://www.tally.xyz/gov/${encodeURIComponent(organizationSlug)}/proposal/${encodeURIComponent(proposalId)}`;
 }
 
-function applyProposalFilters(items: Proposal[], query: ProposalFilters) {
-  // spaceSlug, status, q are already filtered in SQL; only complex sorts need in-memory work
-  const sorted = [...items].sort((a, b) => {
-    if (query.sort === "heat") return b.heat - a.heat;
-    return +new Date(b.publishedAt) - +new Date(a.publishedAt);
-  });
-
-  return typeof query.limit === "number" ? sorted.slice(0, query.limit) : sorted;
-}
 
 function applySpaceFilters(items: Space[], query: SpaceFilters) {
   // verified and q are already filtered in SQL; category is handled here on the smaller result set

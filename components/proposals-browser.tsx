@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const statusOptions: Array<ProposalStatus | "All"> = ["All", "Active", "Upcoming", "Closed", "Executed"];
-const sortOptions = ["Time", "Heat"] as const;
+const sortOptions = ["Time"] as const;
 const DEFAULT_PROPOSAL_LIMIT = 24;
 const LOAD_MORE_STEP = 12;
 
@@ -158,7 +158,7 @@ export function ProposalsBrowser({
                 size="sm"
                 onClick={() => setSort(option)}
               >
-                {option === "Time" ? tProposals("time") : tProposals("heat")}
+                {tProposals("time")}
               </Button>
             ))}
             {locale !== "en" ? (

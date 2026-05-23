@@ -1,0 +1,1 @@
+CREATE INDEX "idx_snapshot_spaces_categories_gin" ON "snapshot_spaces" USING gin ("categories");

@@ -38,7 +38,7 @@ type ProtocolProposalFilters = {
   statusGroup?: GovernanceStatusGroup | "All";
   status?: string;
   chainId?: string;
-  sort?: "time" | "heat" | "votes" | "endingSoon";
+  sort?: "time" | "votes" | "endingSoon";
   limit?: number;
 };
 
@@ -370,7 +370,6 @@ function mapSnapshotProposal(row: SnapshotProposalRecord, protocol: GovernancePr
     endsAt: fromUnixSeconds(proposal.endTs),
     votesCount: proposal.votesCount,
     quorum: proposal.quorum != null ? String(proposal.quorum) : null,
-    heat: computeProposalHeat(proposal.scoresTotal, space.memberCount),
     discussionUrl: proposal.discussion || proposalUrl,
     proposalUrl,
     sourceUrl: proposalUrl,
@@ -420,7 +419,6 @@ function mapTallyProposal(row: TallyProposalRecord, protocol: GovernanceProtocol
     endsAt: proposal.endAt?.toISOString() ?? null,
     votesCount: sumTallyVotes(proposal.voteStats),
     quorum: proposal.quorum != null ? String(proposal.quorum) : null,
-    heat: computeProposalHeat(proposal.quorum, sumTallyVotes(proposal.voteStats) ?? 0),
     discussionUrl: getMetadataString(proposal.metadata, "discourseURL"),
     proposalUrl,
     sourceUrl: proposalUrl,
@@ -453,7 +451,6 @@ function matchesProposalFilters(proposal: GovernanceProposalListItem, query: Pro
 }
 
 function compareProposals(a: GovernanceProposalListItem, b: GovernanceProposalListItem, sort: ProtocolProposalFilters["sort"]) {
-  if (sort === "heat") return b.heat - a.heat;
   if (sort === "votes") return (b.votesCount ?? 0) - (a.votesCount ?? 0);
   if (sort === "endingSoon") {
     return nullableTime(a.endsAt, Number.MAX_SAFE_INTEGER) - nullableTime(b.endsAt, Number.MAX_SAFE_INTEGER);
@@ -546,10 +543,6 @@ function nullableTime(value: string | null, fallback: number) {
   return value ? +new Date(value) : fallback;
 }
 
-function computeProposalHeat(scoreValue: string | null, memberOrVotesCount: number) {
-  const score = scoreValue ? Number(scoreValue) : 0;
-  return Math.max(10, Math.min(99, Math.round(Math.log10(score + 10) * 24 + Math.log10(memberOrVotesCount + 10) * 12)));
-}
 
 function sumTallyVotes(voteStats: unknown[] | null) {
   if (!Array.isArray(voteStats)) return null;

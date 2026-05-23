@@ -55,6 +55,7 @@ export const snapshotSpaces = pgTable(
       .on(table.proposalCount.desc(), table.memberCount.desc(), table.name)
       .where(sql`${table.flagged} = false AND ${table.verified} = true`),
     nameTrgmIdx: index("idx_snapshot_spaces_name_trgm").using("gin", table.name.op("gin_trgm_ops")),
+    categoriesGinIdx: index("idx_snapshot_spaces_categories_gin").using("gin", table.categories),
   })
 );
 

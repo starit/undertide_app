@@ -60,7 +60,6 @@ export type GovernanceProposalListItem = {
   endsAt: string | null;
   votesCount: number | null;
   quorum: string | null;
-  heat: number;
   discussionUrl: string | null;
   proposalUrl: string;
   sourceUrl: string;

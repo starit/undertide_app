@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const SOURCES = ["snapshot", "tally", "all"] as const;
 const STATUS_GROUPS = ["Upcoming", "Active", "Closed", "Executed", "All"] as const;
-const PROTOCOL_PROPOSAL_SORTS = ["time", "heat", "votes", "endingSoon"] as const;
+const PROTOCOL_PROPOSAL_SORTS = ["time", "votes", "endingSoon"] as const;
 
 export type ProtocolSourceParam = (typeof SOURCES)[number];
 export type ProtocolStatusGroupParam = (typeof STATUS_GROUPS)[number];

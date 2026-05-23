@@ -262,10 +262,6 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 <p className="mt-2">{new Date(proposal.closesAt).toLocaleString(uiLocale)}</p>
               </div>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("heat")}</p>
-                <p className="mt-2">{proposal.heat} / 100</p>
-              </div>
-              <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("votes")}</p>
                 <p className="mt-2">{proposal.votesCount.toLocaleString()}</p>
               </div>

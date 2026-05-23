@@ -11,7 +11,6 @@ export interface Proposal {
   status: ProposalStatus;
   publishedAt: string;
   closesAt: string;
-  heat: number;
   votesCount: number;
   type: string | null;
   labels: string[];

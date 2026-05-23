@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const proposals = await listProposals({
     q: searchParams.get("q") ?? undefined,
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
-    sort: (searchParams.get("sort") as "time" | "heat" | null) ?? undefined,
+    sort: (searchParams.get("sort") as "time" | null) ?? undefined,
     spaceSlug: searchParams.get("spaceSlug") ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_PROPOSAL_LIMIT,
     locale: searchParams.get("locale") ?? undefined,

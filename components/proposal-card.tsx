@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import { useTranslations } from "next-intl";
-import { ArrowUpRight, Clock3 } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { Proposal } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,10 +34,6 @@ export function ProposalCard({ proposal, compact = false }: { proposal: Proposal
           <div className="flex items-center gap-2">
             <span className="uppercase tracking-[0.22em]">{tProposals("published")}</span>
             <span>{new Date(proposal.publishedAt).toLocaleDateString(locale)}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 border border-border bg-muted/50 px-2 py-1 uppercase tracking-[0.18em]">
-            <Clock3 className="size-3.5" />
-            <span>{tProposals("heat")} {proposal.heat}</span>
           </div>
         </div>
         <Link href={`/proposals/${proposal.id}`} className="inline-flex items-center gap-2 text-sm font-medium">
