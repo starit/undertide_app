@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { sql as drizzleSql } from "drizzle-orm";
+import { count, sql as drizzleSql } from "drizzle-orm";
 import { snapshotSpaces } from "../db/drizzle-schema";
 import {
   SPACE_LIST_SELECTION,
@@ -142,9 +142,18 @@ async function syncSpaces(): Promise<number> {
   return runIncrementalSync(watermark);
 }
 
+async function getDbSpaceCount(): Promise<number> {
+  const [row] = await db.select({ n: count() }).from(snapshotSpaces);
+  return Number(row?.n ?? 0);
+}
+
 async function main() {
   console.log("Starting spaces sync...");
+  const dbBefore = await getDbSpaceCount();
+  console.log(`[spaces] DB count before: ${dbBefore}`);
   await runSync(db, "spaces", syncSpaces);
+  const dbAfter = await getDbSpaceCount();
+  console.log(`[spaces] DB count after: ${dbAfter} (${dbAfter >= dbBefore ? "+" : ""}${dbAfter - dbBefore})`);
   await refreshPlatformStatsAfterSync(databaseUrl);
   console.log("Spaces sync completed.");
 }
