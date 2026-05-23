@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
   proposalTranslations,
@@ -136,9 +137,9 @@ export async function listSpaces(query: SpaceFilters = {}): Promise<Space[]> {
   return getCachedSpaces(normalizeSpaceFilters(query));
 }
 
-export async function getSpaceBySlug(slug: string): Promise<Space | null> {
+export const getSpaceBySlug = cache(async (slug: string): Promise<Space | null> => {
   return getCachedSpaceBySlug(slug);
-}
+});
 
 export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
   const normalizedQuery = normalizeProposalFilters(query);

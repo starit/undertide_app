@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, BadgeCheck } from "lucide-react";
-import { getSpaceBySlug, listSpaceProposals } from "@/lib/repository";
+import { getSpaceBySlug, listSpaceProposals, listSpaces } from "@/lib/repository";
 import { getServerLocale } from "@/lib/i18n-server";
 import { ProposalsBrowser } from "@/components/proposals-browser";
 import { ScamWarning } from "@/components/scam-warning";
@@ -11,7 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+export const revalidate = 300;
+
 const INITIAL_SPACE_PROPOSAL_LIMIT = 24;
+
+export async function generateStaticParams() {
+  const spaces = await listSpaces({ sort: "activity", verified: true, limit: 100 });
+  return spaces.map((s) => ({ slug: s.slug }));
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
