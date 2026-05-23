@@ -23,6 +23,7 @@ const options = {
 
 const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required.");
+const resolvedDatabaseUrl = databaseUrl;
 const db = createDb(databaseUrl);
 
 async function fetchSpacePage(first: number, skip: number, where: Record<string, unknown>): Promise<SnapshotSpace[]> {
@@ -154,7 +155,7 @@ async function main() {
   await runSync(db, "spaces", syncSpaces);
   const dbAfter = await getDbSpaceCount();
   console.log(`[spaces] DB count after: ${dbAfter} (${dbAfter >= dbBefore ? "+" : ""}${dbAfter - dbBefore})`);
-  await refreshPlatformStatsAfterSync(databaseUrl);
+  await refreshPlatformStatsAfterSync(resolvedDatabaseUrl);
   console.log("Spaces sync completed.");
 }
 

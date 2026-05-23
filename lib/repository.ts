@@ -11,7 +11,7 @@ import {
   tallyOrganizations,
   tallyProposals,
 } from "@/db/drizzle-schema";
-import { getDb, hasDatabase } from "@/lib/db";
+import { getDb, getSql, hasDatabase } from "@/lib/db";
 import { GOVERNANCE_SOURCES } from "@/lib/governance/sources";
 import {
   PlatformStats,
@@ -120,6 +120,30 @@ type SlimProposalRecord = {
   >;
   space: Pick<typeof snapshotSpaces.$inferSelect, "id" | "name" | "avatar" | "memberCount">;
   translation: Pick<typeof proposalTranslations.$inferSelect, "title" | "summary"> | null;
+};
+
+type ProposalSearchRow = {
+  proposal_id: string;
+  proposal_space_id: string;
+  proposal_title: string;
+  proposal_author: string;
+  proposal_created_ts: number | string;
+  proposal_end_ts: number | string;
+  proposal_type: string | null;
+  proposal_labels: unknown;
+  proposal_quorum: number | string | null;
+  proposal_quorum_type: string | null;
+  proposal_app: string | null;
+  proposal_discussion: string | null;
+  proposal_scores_total: number | string | null;
+  proposal_votes_count: number | string;
+  proposal_state: string;
+  space_id: string;
+  space_name: string;
+  space_avatar: string | null;
+  space_member_count: number | string;
+  translation_title: string | null;
+  translation_summary: string | null;
 };
 
 type ProposalTranslationRecord = typeof proposalTranslations.$inferSelect;
@@ -422,10 +446,14 @@ async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
   }
 }
 
-async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposalRecord[]> {
+async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimProposalRecord[]> {
   if (!hasDatabase) return [];
 
   try {
+    if (query.q) {
+      return await fetchSearchedProposals(query);
+    }
+
     const db = getDb();
 
     const conditions: (SQL | undefined)[] = [
@@ -436,9 +464,6 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
         ? query.status === "Executed"
           ? notInArray(snapshotProposals.state, ["active", "pending", "closed"])
           : eq(snapshotProposals.state, { Active: "active", Upcoming: "pending", Closed: "closed" }[query.status]!)
-        : undefined,
-      query.q
-        ? or(ilike(snapshotProposals.title, `%${query.q.trim()}%`), ilike(snapshotSpaces.name, `%${query.q.trim()}%`))
         : undefined,
     ];
 
@@ -568,6 +593,175 @@ async function fetchProposals(query: ProposalFilters = {}): Promise<SlimProposal
   } catch {
     return [];
   }
+}
+
+async function fetchSearchedProposals(query: NormalizedProposalFilters): Promise<SlimProposalRecord[]> {
+  const searchTerm = normalizeOptionalString(query.q);
+  if (!searchTerm) return [];
+
+  const params: unknown[] = [];
+  const addParam = (value: unknown) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  const patternParam = addParam(`%${searchTerm}%`);
+  const candidateLimitParam = addParam(getProposalSearchCandidateLimit(query.limit));
+  const spaceCandidateLimitParam = addParam(100);
+  const limitParam = addParam(normalizeLimit(query.limit, 200));
+
+  const spaceMatchConditions = [`s.flagged = false`, `s.name ilike ${patternParam}`];
+  if (query.spaceSlug) {
+    spaceMatchConditions.push(`s.id = ${addParam(query.spaceSlug)}`);
+  }
+
+  const titleMatchConditions = [`p.flagged = false`, `p.title ilike ${patternParam}`];
+  appendProposalSearchScopeConditions(titleMatchConditions, query, "p", addParam);
+
+  const spaceProposalConditions = [`p.flagged = false`, `p.space_id in (select id from search_space_matches)`];
+  appendProposalSearchScopeConditions(spaceProposalConditions, query, "p", addParam);
+
+  const finalConditions = [`p.flagged = false`, `s.flagged = false`];
+  appendProposalSearchScopeConditions(finalConditions, query, "p", addParam);
+
+  const normalizedLocale = normalizeTranslationLocale(query.locale);
+  const shouldJoinTranslations = normalizedLocale && normalizedLocale !== "en";
+  const translationLocaleParam = shouldJoinTranslations ? addParam(normalizedLocale) : null;
+  const translationJoin = shouldJoinTranslations
+    ? `${query.translatedOnly ? "inner" : "left"} join proposal_translations t on t.proposal_id = p.id and t.locale = ${translationLocaleParam}`
+    : "";
+  const translationSelect = shouldJoinTranslations
+    ? `t.title as translation_title, t.summary as translation_summary`
+    : `null::text as translation_title, null::text as translation_summary`;
+
+  const searchSql = `
+    with
+      search_space_matches as (
+        select s.id
+        from snapshot_spaces s
+        where ${spaceMatchConditions.join(" and ")}
+        limit ${spaceCandidateLimitParam}
+      ),
+      title_matches as (
+        select p.id
+        from snapshot_proposals p
+        where ${titleMatchConditions.join(" and ")}
+        order by p.created_at desc nulls last
+        limit ${candidateLimitParam}
+      ),
+      space_proposal_matches as (
+        select p.id
+        from snapshot_proposals p
+        where ${spaceProposalConditions.join(" and ")}
+        order by p.created_at desc nulls last
+        limit ${candidateLimitParam}
+      ),
+      candidate_ids as (
+        select id from title_matches
+        union
+        select id from space_proposal_matches
+      )
+    select
+      p.id as proposal_id,
+      p.space_id as proposal_space_id,
+      p.title as proposal_title,
+      p.author as proposal_author,
+      p.created_ts as proposal_created_ts,
+      p.end_ts as proposal_end_ts,
+      p.type as proposal_type,
+      p.labels as proposal_labels,
+      p.quorum as proposal_quorum,
+      p.quorum_type as proposal_quorum_type,
+      p.app as proposal_app,
+      p.discussion as proposal_discussion,
+      p.scores_total as proposal_scores_total,
+      p.votes_count as proposal_votes_count,
+      p.state as proposal_state,
+      s.id as space_id,
+      s.name as space_name,
+      s.avatar as space_avatar,
+      s.member_count as space_member_count,
+      ${translationSelect}
+    from snapshot_proposals p
+    join candidate_ids c on c.id = p.id
+    join snapshot_spaces s on p.space_id = s.id
+    ${translationJoin}
+    where ${finalConditions.join(" and ")}
+    order by p.created_at desc nulls last
+    limit ${limitParam}
+  `;
+
+  const rows = (await getSql().query(searchSql, params)) as ProposalSearchRow[];
+  return rows.map(mapProposalSearchRow);
+}
+
+function appendProposalSearchScopeConditions(
+  conditions: string[],
+  query: NormalizedProposalFilters,
+  alias: string,
+  addParam: (value: unknown) => string
+) {
+  if (query.spaceSlug) {
+    conditions.push(`${alias}.space_id = ${addParam(query.spaceSlug)}`);
+  }
+
+  if (!query.status || query.status === "All") {
+    return;
+  }
+
+  if (query.status === "Executed") {
+    conditions.push(`${alias}.state not in ('active', 'pending', 'closed')`);
+    return;
+  }
+
+  const stateByStatus = {
+    Active: "active",
+    Upcoming: "pending",
+    Closed: "closed",
+  } satisfies Record<Exclude<ProposalStatus, "Executed">, string>;
+
+  conditions.push(`${alias}.state = ${addParam(stateByStatus[query.status])}`);
+}
+
+function getProposalSearchCandidateLimit(limit: number | undefined) {
+  return Math.min(1000, Math.max(300, normalizeLimit(limit, 200) * 25));
+}
+
+function mapProposalSearchRow(row: ProposalSearchRow): SlimProposalRecord {
+  const translation =
+    row.translation_title || row.translation_summary
+      ? {
+          title: row.translation_title,
+          summary: row.translation_summary,
+        }
+      : null;
+
+  return {
+    proposal: {
+      id: row.proposal_id,
+      spaceId: row.proposal_space_id,
+      title: row.proposal_title,
+      author: row.proposal_author,
+      createdTs: Number(row.proposal_created_ts) || 0,
+      endTs: Number(row.proposal_end_ts) || 0,
+      type: row.proposal_type,
+      labels: Array.isArray(row.proposal_labels) ? row.proposal_labels.filter((entry): entry is string => typeof entry === "string") : [],
+      quorum: row.proposal_quorum == null ? null : String(row.proposal_quorum),
+      quorumType: row.proposal_quorum_type,
+      app: row.proposal_app,
+      discussion: row.proposal_discussion,
+      scoresTotal: row.proposal_scores_total == null ? null : String(row.proposal_scores_total),
+      votesCount: Number(row.proposal_votes_count) || 0,
+      state: row.proposal_state,
+    },
+    space: {
+      id: row.space_id,
+      name: row.space_name,
+      avatar: row.space_avatar,
+      memberCount: Number(row.space_member_count) || 0,
+    },
+    translation,
+  };
 }
 
 async function fetchProposalById(id: string, locale?: string): Promise<ProposalRecord | null> {

@@ -30,10 +30,13 @@ export function ThemeSwitcher() {
   const t = useTranslations("nav");
   const { theme, setTheme } = useNextTheme();
   const { importTheme, apply } = useThemedJsTheme();
+  const [mounted, setMounted] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +110,7 @@ export function ThemeSwitcher() {
           <Sun className="size-3.5" />
           {t("theme")}
         </span>
-        <Select value={theme} onValueChange={setTheme}>
+        <Select value={mounted ? theme : undefined} onValueChange={setTheme}>
           <SelectTrigger aria-label={t("themeSelectAria")} className="w-[110px] min-w-0">
             <SelectValue placeholder={t("theme")} />
           </SelectTrigger>

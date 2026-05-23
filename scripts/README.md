@@ -2,6 +2,19 @@
 
 This directory contains operational scripts for sync, backfill, migration, and translation tasks.
 
+A ready-to-use crontab is at [`scripts/crontab.example`](./crontab.example). Update `DIR`, `PNPM`, and `LOG` at the top, then install with `crontab scripts/crontab.example`.
+
+| Job | Schedule | Command |
+|---|---|---|
+| Snapshot spaces | every 30 min | `sync:snapshot:spaces` |
+| Snapshot proposals | every 15 min | `sync:snapshot:proposals --from-db` |
+| Tally | every 2 hours | `sync:tally` |
+| Link protocols | every 2 hours | `link:protocols` |
+| Translate proposals | every 6 hours | `translate:proposals --limit 500` |
+| Snapshot backfill | 1st of month, 3am | `sync:snapshot:backfill` |
+
+---
+
 ## Snapshot Sync — Data Maintenance Guide
 
 The Snapshot sync is split into three scripts with clearly separated responsibilities.
@@ -271,36 +284,43 @@ Manual seed rows run before automatic linking. Automatically generated links pre
 Script path: [`sync-tally.ts`](./sync-tally.ts).  
 pnpm shortcut: **`pnpm sync:tally`** → `npx tsx scripts/sync-tally.ts`.
 
-Writes Tally governance data into raw source tables:
+Writes Tally governance data into:
 
 - `tally_organizations`
 - `tally_proposals`
 
-The script uses Tally governance GraphQL at `https://api.tally.xyz/query` by default. It records progress in the existing sync-state tables with source-scoped entity types: `tally:organizations` and `tally:proposals`. This keeps the current Snapshot API untouched while leaving a stable source dimension for the future aggregate governance API.
+### Sync strategy
 
-The aggregate API contract is documented in [`docs/1. governance-aggregation-api.md`](../docs/1.%20governance-aggregation-api.md).
+**Organizations** — always full-scan (cursor-based, resumable). Tally's API has no timestamp filter for organizations, and stats like `proposalsCount` / `hasActiveProposals` change frequently so even old organizations need periodic refresh. The remote total is printed on the first page fetch for comparison with the local DB count.
+
+**Proposals** — stateless incremental per organization. Before fetching each org's proposals, the script queries `MAX(created_ts)` from `tally_proposals` for that org. Proposals are fetched newest-first (`sort: id desc`); once the oldest proposal in a page is older than the local watermark, fetching stops. This means only new proposals are fetched on each run without storing any cursor state. Pass `--full` to skip the watermark and re-fetch the entire history.
+
+Each run prints DB counts before and after sync.
 
 ### Common commands
 
 ```bash
-pnpm sync:tally
+pnpm sync:tally                                              # incremental (default)
+pnpm sync:tally:full                                         # full re-sync, no watermark
+pnpm sync:tally --organizations-only                         # refresh org stats only
+pnpm sync:tally --proposals-only                             # proposals only
 pnpm sync:tally --organizations-only --limit-organizations 200
 pnpm sync:tally --organization-slug uniswap --limit-proposals 100
-pnpm sync:tally:full --organization-slug uniswap
+pnpm sync:tally:full --organization-slug uniswap             # full re-sync for one org
 ```
 
 ### CLI flags
 
 | Flag | Description |
 | --- | --- |
-| `--full` | Do not resume organization cursor; remove the default per-organization proposal cap. |
-| `--organizations-only` | Sync Tally organizations only. |
-| `--proposals-only` | Sync Tally proposals only, using organizations already present in `tally_organizations`. |
-| `--organization-id <id>` | Restrict organization/proposal work to a specific Tally organization id. Repeatable. |
-| `--organization-slug <slug>` | Restrict organization/proposal work to a specific Tally organization slug. Repeatable. |
+| `--full` | Organizations: ignore stored cursor and start from the beginning. Proposals: skip per-org watermark and re-fetch the entire history. |
+| `--organizations-only` | Sync organizations only; skip proposal sync. |
+| `--proposals-only` | Sync proposals only, using organizations already in `tally_organizations`. |
+| `--organization-id <id>` | Restrict to a specific Tally organization ID. Repeatable. |
+| `--organization-slug <slug>` | Restrict to a specific Tally organization slug. Repeatable. |
 | `--limit-organizations <n>` | Max organizations to fetch from Tally in this run. |
-| `--limit-proposals <n>` | Max proposals per organization unless `--full` is used. |
-| `--proposal-organization-limit <n>` | Max stored organizations to scan for proposal sync when no explicit organization filter is provided. |
+| `--limit-proposals <n>` | Max proposals per organization (default `TALLY_PROPOSALS_PER_ORGANIZATION`). Ignored when `--full` is set. |
+| `--proposal-organization-limit <n>` | Max stored organizations scanned for proposal sync when no explicit org filter is provided. |
 
 ### Environment variables
 

@@ -68,6 +68,7 @@ async function linkManualSeeds() {
   const seeds = readManualSeeds(options.seedFile);
   if (seeds.length === 0) return 0;
 
+  console.log(`[protocol-link] manual seeds: ${seeds.length} entries`);
   let linked = 0;
 
   for (const seed of seeds) {
@@ -93,9 +94,11 @@ async function linkManualSeeds() {
         linkedBy: "manual-seed",
       });
       linked += 1;
+      console.log(`[protocol-link] manual: ${source.source}:${source.sourceId} -> ${protocolId} (${protocolName})`);
     }
   }
 
+  console.log(`[protocol-link] manual seeds done: linked=${linked}`);
   return linked;
 }
 
@@ -114,6 +117,8 @@ async function linkSnapshotSpaces() {
     .where(drizzleSql`${snapshotSpaces.proposalCount} >= ${options.minProposals}`)
     .orderBy(desc(snapshotSpaces.proposalCount), snapshotSpaces.name)
     .limit(options.limit);
+
+  console.log(`[protocol-link] db: loaded ${rows.length} snapshot spaces (min_proposals=${options.minProposals})`);
 
   let linked = 0;
 
@@ -137,8 +142,12 @@ async function linkSnapshotSpaces() {
       confidence: "medium",
     });
     linked += 1;
+    if (linked % 500 === 0) {
+      console.log(`[protocol-link] snapshot spaces progress: ${linked}/${rows.length}`);
+    }
   }
 
+  console.log(`[protocol-link] snapshot spaces done: linked=${linked}`);
   return linked;
 }
 
@@ -156,6 +165,8 @@ async function linkTallyOrganizations() {
     .where(drizzleSql`${tallyOrganizations.proposalsCount} >= ${options.minProposals}`)
     .orderBy(desc(tallyOrganizations.proposalsCount), tallyOrganizations.name)
     .limit(options.limit);
+
+  console.log(`[protocol-link] db: loaded ${rows.length} tally organizations (min_proposals=${options.minProposals})`);
 
   let linked = 0;
 
@@ -180,8 +191,12 @@ async function linkTallyOrganizations() {
       confidence: "medium",
     });
     linked += 1;
+    if (linked % 500 === 0) {
+      console.log(`[protocol-link] tally organizations progress: ${linked}/${rows.length}`);
+    }
   }
 
+  console.log(`[protocol-link] tally organizations done: linked=${linked}`);
   return linked;
 }
 
@@ -226,7 +241,7 @@ async function upsertProtocolSource(input: {
 
   if (options.dryRun) {
     console.log(
-      `[protocol-link] ${input.source}:${input.sourceId} -> ${input.protocolId} (${input.sourceName ?? input.protocolName})`
+      `[protocol-link] dry-run: ${input.source}:${input.sourceId} -> ${input.protocolId} (${input.sourceName ?? input.protocolName})`
     );
     return;
   }
@@ -273,6 +288,11 @@ async function upsertProtocolSource(input: {
         updatedAt: drizzleSql`now()`,
       },
     });
+
+  // Only log for manual seeds — auto-link logs progress at batch level
+  if (linkedBy.startsWith("manual")) {
+    console.log(`[protocol-link] db: upserted protocol=${input.protocolId} source=${input.source}:${input.sourceId}`);
+  }
 }
 
 async function getProtocol(protocolId: string) {

@@ -99,6 +99,7 @@ async function main() {
   const locales = requestedLocales.length > 0 ? requestedLocales : ["zh", "ja", "ko"];
   validateLocales(locales);
   const proposalsCount = await countSourceProposals(locales, requestedProposalId ?? undefined);
+  console.log(`[translate] db: ${proposalsCount} proposals need translation`);
   if (proposalsCount === 0) {
     console.log("No proposals found for translation.");
     return;
@@ -177,6 +178,7 @@ async function main() {
               }))
             )
             .onConflictDoNothing();
+          console.log(`[translate] db: wrote ${targetLocales.length} sentinel row(s) for ${item.proposal.id} (skipped: low-value)`);
         }
         printProgress(
           processedLocaleTargets,
@@ -487,6 +489,10 @@ async function translateProposalSingleShot(
 ): Promise<{ title: string; body: string; summary: string }> {
   const lc = localeConfigs[input.locale];
   const truncationNote = sourceBodyTruncated ? bodyTruncationSystemNote(maxBodyCharsForTranslation) : "";
+  console.log(
+    `[translate] → DeepSeek single-shot locale=${input.locale} body_chars=${protectedBody.text.length}` +
+    (sourceBodyTruncated ? " (truncated)" : "")
+  );
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -536,6 +542,7 @@ async function translateProposalSingleShot(
   const choice = payload.choices?.[0];
   const content = choice?.message?.content;
   if (!content) throw new Error("DeepSeek returned an empty translation response.");
+  console.log(`[translate] ← DeepSeek single-shot finish_reason=${choice?.finish_reason ?? "?"} content_chars=${content.length}`);
 
   const parsed = parseJsonFromAssistant(content, input.locale, choice?.finish_reason, "single-shot") as {
     title?: string;
@@ -560,6 +567,7 @@ async function translateTitleAndSummaryRound(args: {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    console.log(`[translate] → DeepSeek phase1:meta locale=${args.locale} attempt=${attempt}`);
     const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -611,6 +619,7 @@ async function translateTitleAndSummaryRound(args: {
     const choice = payload.choices?.[0];
     const content = choice?.message?.content;
     if (!content) throw new Error("DeepSeek returned empty meta (title/summary).");
+    console.log(`[translate] ← DeepSeek phase1:meta finish_reason=${choice?.finish_reason ?? "?"} content_chars=${content.length}`);
 
     try {
       const parsed = parseJsonFromAssistant(content, args.locale, choice?.finish_reason, "phase1:title+summary") as {
@@ -655,6 +664,10 @@ async function translateBodyRound(args: {
 }) {
   const lc = localeConfigs[args.locale];
   const truncationNote = args.sourceBodyTruncated ? bodyTruncationSystemNote(maxBodyCharsForTranslation) : "";
+  console.log(
+    `[translate] → DeepSeek phase2:body locale=${args.locale} body_chars=${args.protectedBody.text.length}` +
+    (args.sourceBodyTruncated ? " (truncated)" : "")
+  );
   const response = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -702,6 +715,7 @@ async function translateBodyRound(args: {
   const choice = payload.choices?.[0];
   const content = choice?.message?.content;
   if (!content) throw new Error("DeepSeek returned empty body translation.");
+  console.log(`[translate] ← DeepSeek phase2:body finish_reason=${choice?.finish_reason ?? "?"} content_chars=${content.length}`);
   if (choice?.finish_reason === "length") {
     throw new Error(
       `DeepSeek truncated (phase2:body-only), finish_reason=length — raise TRANSLATE_MAX_TOKENS or lower TRANSLATE_MAX_BODY_CHARS.`

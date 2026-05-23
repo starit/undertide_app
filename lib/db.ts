@@ -13,6 +13,15 @@ function getDatabaseUrl() {
   return process.env.DATABASE_URL || process.env.DATABASE_URL_UNPOOLED;
 }
 
+type SqlClient = ReturnType<typeof neon>;
+type DatabaseClient = ReturnType<typeof drizzle>;
+
+const globalForDb = globalThis as typeof globalThis & {
+  __undertideDatabaseUrl?: string;
+  __undertideSql?: SqlClient;
+  __undertideDb?: DatabaseClient;
+};
+
 export function getSql() {
   const databaseUrl = getDatabaseUrl();
 
@@ -20,9 +29,21 @@ export function getSql() {
     throw new Error("DATABASE_URL or DATABASE_URL_UNPOOLED is not set.");
   }
 
-  return neon(databaseUrl);
+  if (!globalForDb.__undertideSql || globalForDb.__undertideDatabaseUrl !== databaseUrl) {
+    globalForDb.__undertideSql = neon(databaseUrl);
+    globalForDb.__undertideDb = undefined;
+    globalForDb.__undertideDatabaseUrl = databaseUrl;
+  }
+
+  return globalForDb.__undertideSql;
 }
 
 export function getDb() {
-  return drizzle(getSql(), { schema });
+  const sql = getSql();
+
+  if (!globalForDb.__undertideDb) {
+    globalForDb.__undertideDb = drizzle(sql, { schema });
+  }
+
+  return globalForDb.__undertideDb;
 }

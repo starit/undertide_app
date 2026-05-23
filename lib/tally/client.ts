@@ -77,9 +77,14 @@ type TallyClientOptions = {
   retryBaseMs?: number;
 };
 
+type TallySort = {
+  sortBy?: string;
+  isDescending?: boolean;
+};
+
 type TallyOrganizationsInput = {
   filters?: Record<string, unknown>;
-  sort?: Record<string, unknown>;
+  sort?: TallySort;
   page?: {
     limit?: number;
     afterCursor?: string | null;
@@ -101,7 +106,7 @@ type TallyProposalsFilters = {
 
 type TallyProposalsInput = {
   filters?: TallyProposalsFilters;
-  sort?: Record<string, unknown>;
+  sort?: TallySort;
   page?: {
     limit?: number;
     afterCursor?: string | null;
