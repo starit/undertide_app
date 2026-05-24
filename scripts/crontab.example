@@ -45,6 +45,11 @@ LOG=/Users/starit/src/undertide.xyz/v2/undertide-app-v2/logs
 # Adjust --limit based on backlog and cost tolerance.
 0 */6 * * * cd $DIR && $PNPM translate:proposals --limit 500 >> $LOG/translate.log 2>&1
 
+# ── Translate spaces ──────────────────────────────────────────────────────────
+# Space about-text translation; much smaller volume than proposals.
+# Daily at 5am is more than enough; adjust --limit to taste.
+0 5 * * * cd $DIR && $PNPM translate:spaces --limit 100 >> $LOG/translate-spaces.log 2>&1
+
 # ── Sync health check ─────────────────────────────────────────────────────────
 # Exits 1 if any sync is critically stale. Wire to your alerting of choice:
 #   ... || echo "undertide sync stale" | mail -s "sync alert" you@example.com

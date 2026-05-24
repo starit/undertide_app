@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     verified: searchParams.get("verified") === null ? undefined : searchParams.get("verified") === "true",
     sort: (searchParams.get("sort") as "activity" | "followers" | null) ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_SPACE_LIMIT,
+    locale: searchParams.get("locale") ?? undefined,
   });
 
   return NextResponse.json(

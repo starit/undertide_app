@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { getPlatformStats, listSpaces } from "@/lib/repository";
 import { SectionHeading } from "@/components/section-heading";
 import { SpacesBrowser } from "@/components/spaces-browser";
@@ -15,9 +15,9 @@ export const metadata: Metadata = {
 };
 
 export default async function SpacesPage() {
-  const tSpaces = await getTranslations("spaces");
+  const [tSpaces, locale] = await Promise.all([getTranslations("spaces"), getLocale()]);
   const [spaces, stats] = await Promise.all([
-    listSpaces({ sort: "activity", verified: true, limit: INITIAL_SPACE_LIMIT }),
+    listSpaces({ sort: "activity", verified: true, limit: INITIAL_SPACE_LIMIT, locale }),
     getPlatformStats(),
   ]);
 

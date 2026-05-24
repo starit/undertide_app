@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, List, Search } from "lucide-react";
 import { Space } from "@/lib/types";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -36,6 +36,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
   const tSpaces = useTranslations("spaces");
+  const locale = useLocale();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryValue>("All");
   const [verifiedOnly, setVerifiedOnly] = useState(true);
@@ -69,13 +70,17 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
       searchParams.set("verified", "true");
     }
 
+    if (locale && locale !== "en") {
+      searchParams.set("locale", locale);
+    }
+
     const requestKey = searchParams.toString();
     if (!skippedInitialRequestRef.current) {
       skippedInitialRequestRef.current = true;
       // Use initialLoadLimit (not the API's 200) so that if the user resets
       // filters after changing them, the keys won't match and a fresh 200-item
       // fetch is triggered rather than showing the smaller initial set.
-      const initialKey = new URLSearchParams({ sort: sort.toLowerCase(), limit: String(initialLoadLimit), ...(verifiedOnly ? { verified: "true" } : {}) }).toString();
+      const initialKey = new URLSearchParams({ sort: sort.toLowerCase(), limit: String(initialLoadLimit), ...(verifiedOnly ? { verified: "true" } : {}), ...(locale && locale !== "en" ? { locale } : {}) }).toString();
       completedRequestKeyRef.current = initialKey;
       return;
     }
@@ -122,7 +127,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
     void loadSpaces();
 
     return () => controller.abort();
-  }, [category, deferredQuery, sort, verifiedOnly]);
+  }, [category, deferredQuery, locale, sort, verifiedOnly]);
 
   return (
     <div className="flex flex-col gap-8">

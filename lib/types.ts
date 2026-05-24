@@ -38,6 +38,9 @@ export interface ProposalTranslation {
 
 export interface ProposalDetail extends Proposal {
   translation: ProposalTranslation | null;
+  choices: string[];
+  scores: number[] | null;
+  scoresTotal: number | null;
 }
 
 export interface Space {

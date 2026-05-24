@@ -29,7 +29,10 @@ function resolveMarkdownAssetUrl(url?: string | Blob | null) {
   if (url.startsWith("ipfs://")) {
     return `https://cloudflare-ipfs.com/ipfs/${url.slice(7)}`;
   }
-  return url;
+  if (url.startsWith("https://") || url.startsWith("http://")) {
+    return url;
+  }
+  return "";
 }
 
 function formatAuthorAddress(address: string) {
@@ -56,6 +59,63 @@ function getAuthorAvatarStyle(address: string): CSSProperties {
     background: `linear-gradient(135deg, hsl(${hue} var(--avatar-gradient-sat) var(--avatar-gradient-light-a)), hsl(${accentHue} var(--avatar-gradient-sat-accent) var(--avatar-gradient-light-b)))`,
     color: "hsl(var(--background))",
   };
+}
+
+// ─── Vote outcome ─────────────────────────────────────────────────────────────
+
+// Choices that indicate a positive outcome when they lead the vote.
+const PASSING_CHOICE = /^(for|yes|yea|yay|approve[sd]?|in favor|support[s]?|pass(?:ed)?|accept(?:ed)?|agree[sd]?|赞成|同意|支持)\b/i;
+// Choices that indicate a negative outcome when they lead the vote.
+const FAILING_CHOICE = /^(against|no|nay|nope|reject(?:ed)?|oppose[sd]?|decline[sd]?|fail(?:ed)?|disagree[sd]?|反对|不同意|拒绝)\b/i;
+
+type VoteOutcome = "passed" | "failed" | null;
+
+/**
+ * Best-effort inference of whether a closed proposal passed.
+ * Returns null when the outcome can't be determined (complex vote types,
+ * unrecognised choice names, or the proposal isn't closed yet).
+ */
+function deriveVoteOutcome(
+  choices: string[],
+  scores: number[] | null,
+  scoresTotal: number | null,
+  quorum: number | null,
+  status: ProposalDetail["status"],
+  type: string | null
+): VoteOutcome {
+  if (status !== "Closed" && status !== "Executed") return null;
+  if (!choices.length || !scores?.length) return null;
+
+  const effectiveTotal = (scoresTotal ?? 0) > 0 ? scoresTotal! : scores.reduce((a, b) => a + b, 0);
+
+  // Quorum check: if a positive quorum threshold exists and wasn't reached, proposal failed.
+  if (quorum != null && quorum > 0 && effectiveTotal < quorum) return "failed";
+
+  // Only determine pass/fail for binary/simple vote types.
+  // Approval, weighted, ranked-choice, quadratic etc. don't have a single "winner".
+  const isSupportedType = type === "basic" || type === "single-choice" || type == null;
+  if (!isSupportedType) return null;
+
+  const leadingIdx = scores.indexOf(Math.max(...scores));
+  const leadingChoice = choices[leadingIdx] ?? "";
+  const leadingScore = scores[leadingIdx] ?? 0;
+
+  // Abstain votes should not count as a "passing" or "failing" outcome
+  if (/^abstain|弃权/i.test(leadingChoice)) return null;
+
+  // Require the leading choice to have at least some votes
+  if (leadingScore === 0) return null;
+
+  if (PASSING_CHOICE.test(leadingChoice)) return "passed";
+  if (FAILING_CHOICE.test(leadingChoice)) return "failed";
+  return null;
+}
+
+function formatScore(value: number): string {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function isFenceBoundary(line: string) {
@@ -129,6 +189,109 @@ function normalizeMarkdownCodeFences(markdown: string) {
   }
 
   return normalized.join("\n");
+}
+
+function VotingResults({
+  choices,
+  scores,
+  scoresTotal,
+  votesCount,
+  quorum,
+  status,
+  type,
+}: {
+  choices: string[];
+  scores: number[] | null;
+  scoresTotal: number | null;
+  votesCount: number;
+  quorum: number | null;
+  status: ProposalDetail["status"];
+  type: string | null;
+}) {
+  const tProposals = useTranslations("proposals");
+
+  if (choices.length === 0 || !scores || scores.length === 0) return null;
+  if (status === "Upcoming") return null;
+
+  const total = scoresTotal != null && scoresTotal > 0 ? scoresTotal : scores.reduce((a, b) => a + b, 0);
+  const leadingIndex = scores.indexOf(Math.max(...scores));
+  const isLive = status === "Active";
+  const quorumMet = quorum != null && quorum > 0 ? total >= quorum : null;
+  const outcome = deriveVoteOutcome(choices, scores, scoresTotal, quorum, status, type);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{isLive ? tProposals("liveResults") : tProposals("votingResults")}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {outcome && (
+          <div className={`flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-semibold ${
+            outcome === "passed"
+              ? "bg-success/10 text-success"
+              : "bg-destructive/10 text-destructive"
+          }`}>
+            <span className="text-base leading-none">{outcome === "passed" ? "✓" : "✗"}</span>
+            {outcome === "passed" ? tProposals("outcomePassed") : tProposals("outcomeNotPassed")}
+          </div>
+        )}
+        <div className="flex flex-col gap-3">
+          {choices.map((choice, i) => {
+            const score = scores[i] ?? 0;
+            const pct = total > 0 ? (score / total) * 100 : 0;
+            const isLeading = i === leadingIndex && score > 0;
+            return (
+              <div key={i} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className={`truncate font-medium ${isLeading ? "text-foreground" : "text-muted-foreground"}`}>
+                    {choice}
+                    {isLeading && !isLive ? (
+                      <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.18em] text-success">
+                        {tProposals("leading")}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                    {pct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={`h-full rounded-full transition-all ${isLeading ? "bg-primary" : "bg-muted-foreground/40"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="font-mono text-[11px] text-muted-foreground">{formatScore(score)}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <Separator />
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{tProposals("totalVotes")}</p>
+            <p className="mt-1 font-semibold">{votesCount.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{tProposals("totalScore")}</p>
+            <p className="mt-1 font-semibold">{formatScore(total)}</p>
+          </div>
+        </div>
+
+        {quorum != null && quorum > 0 ? (
+          <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium ${quorumMet ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em]">
+              {tProposals("quorum")}
+            </span>
+            <span className="ml-auto">{formatScore(quorum)}</span>
+            <span className="shrink-0">{quorumMet ? tProposals("quorumMet") : tProposals("quorumNotMet")}</span>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
 }
 
 type Props = {
@@ -223,7 +386,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
     <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
       {children}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
-        <div className="flex min-w-0 flex-col gap-8">
+        <div className="order-2 flex min-w-0 flex-col gap-8 lg:order-1">
           <div className="border border-border bg-card p-5 shadow-panel md:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <Link
@@ -237,6 +400,25 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 <span className="text-sm font-medium text-foreground">{proposal.protocol}</span>
               </Link>
               <Badge>{proposal.status}</Badge>
+              {(() => {
+                const outcome = deriveVoteOutcome(
+                  proposal.choices,
+                  proposal.scores,
+                  proposal.scoresTotal,
+                  proposal.quorum,
+                  proposal.status,
+                  proposal.type
+                );
+                if (!outcome) return null;
+                return (
+                  <Badge className={outcome === "passed"
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                  }>
+                    {outcome === "passed" ? tProposals("outcomePassed") : tProposals("outcomeNotPassed")}
+                  </Badge>
+                );
+              })()}
               <Badge variant="muted" className="gap-1">
                 <Languages className="size-3.5" />
                 {activeLocale.toUpperCase()}
@@ -461,7 +643,16 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
           </Card>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className="order-1 flex min-w-0 flex-col gap-6 lg:order-2 lg:sticky lg:top-6 lg:self-start">
+          <VotingResults
+            choices={proposal.choices}
+            scores={proposal.scores}
+            scoresTotal={proposal.scoresTotal}
+            votesCount={proposal.votesCount}
+            quorum={proposal.quorum}
+            status={proposal.status}
+            type={proposal.type}
+          />
           <Card>
             <CardHeader>
               <CardTitle>{tProposals("sourceLinks")}</CardTitle>

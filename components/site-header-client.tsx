@@ -101,8 +101,10 @@ export function SiteHeaderClient({
               );
             })}
           </nav>
-          <ThemeSwitcher />
-          <LocaleSwitcher />
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            <LocaleSwitcher />
+          </div>
         </div>
       )}
     </header>

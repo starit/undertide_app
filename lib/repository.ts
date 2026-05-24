@@ -3,6 +3,7 @@ import { cache } from "react";
 import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
   proposalTranslations,
+  spaceTranslations,
   platformStats,
   snapshotProposals,
   snapshotSyncRuns,
@@ -16,6 +17,7 @@ import { GOVERNANCE_SOURCES } from "@/lib/governance/sources";
 import {
   PlatformStats,
   Proposal,
+  ProposalDetail,
   ProposalStatus,
   ProposalTranslation,
   SnapshotSyncState,
@@ -51,6 +53,7 @@ type SpaceFilters = {
   verified?: boolean;
   sort?: "activity" | "followers";
   limit?: number;
+  locale?: string;
 };
 
 type TallyOrganizationFilters = {
@@ -91,7 +94,9 @@ type SlimSpaceRecord = Pick<
   | "coingecko"
   | "memberCount"
   | "proposalCount"
->;
+> & {
+  translatedAbout?: string | null;
+};
 
 type ProposalRecord = {
   proposal: typeof snapshotProposals.$inferSelect;
@@ -161,8 +166,8 @@ export async function listSpaces(query: SpaceFilters = {}): Promise<Space[]> {
   return getCachedSpaces(normalizeSpaceFilters(query));
 }
 
-export const getSpaceBySlug = cache(async (slug: string): Promise<Space | null> => {
-  return getCachedSpaceBySlug(slug);
+export const getSpaceBySlug = cache(async (slug: string, locale?: string): Promise<Space | null> => {
+  return getCachedSpaceBySlug(slug, normalizeTranslationLocale(locale));
 });
 
 export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
@@ -192,21 +197,18 @@ export async function getProposalTranslation(
 export async function getProposalDetail(
   id: string,
   locale?: string
-): Promise<(Proposal & { translation: ProposalTranslation | null }) | null> {
+): Promise<ProposalDetail | null> {
   const normalizedLocale = normalizeTranslationLocale(locale);
   const record = await fetchProposalById(id, normalizedLocale);
   const proposal = record ? mapProposal(record, { includeBody: true }) : null;
-  if (!proposal) return null;
+  if (!proposal || !record) return null;
 
-  const translation = record?.translation ? mapProposalTranslation(record.translation) : null;
-  if (!translation) {
-    return { ...proposal, translation: null };
-  }
+  const translation = record.translation ? mapProposalTranslation(record.translation) : null;
+  const choices = Array.isArray(record.proposal.choices) ? record.proposal.choices.map(String) : [];
+  const scores = Array.isArray(record.proposal.scores) ? record.proposal.scores.map(Number) : null;
+  const scoresTotal = record.proposal.scoresTotal != null ? Number(record.proposal.scoresTotal) : null;
 
-  return {
-    ...proposal,
-    translation,
-  };
+  return { ...proposal, translation, choices, scores, scoresTotal };
 }
 
 export async function listSpaceProposals(spaceSlug: string, query: Omit<ProposalFilters, "spaceSlug"> = {}) {
@@ -277,19 +279,19 @@ const getCachedSpaces = unstable_cache(
   ["spaces-list"],
   {
     revalidate: SPACE_LIST_REVALIDATE_SECONDS,
-    tags: ["spaces"],
+    tags: ["spaces", "translations"],
   }
 );
 
 const getCachedSpaceBySlug = unstable_cache(
-  async (slug: string) => {
-    const record = await fetchSpaceBySlug(slug);
+  async (slug: string, locale?: string) => {
+    const record = await fetchSpaceBySlug(slug, locale);
     return record ? mapSpace(record) : null;
   },
   ["space-detail"],
   {
     revalidate: SPACE_DETAIL_REVALIDATE_SECONDS,
-    tags: ["spaces"],
+    tags: ["spaces", "translations"],
   }
 );
 
@@ -311,11 +313,36 @@ const getCachedPlatformStats = unstable_cache(
   }
 );
 
-async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]> {
+const SPACE_SELECT_FIELDS = {
+  id: snapshotSpaces.id,
+  name: snapshotSpaces.name,
+  about: snapshotSpaces.about,
+  avatar: snapshotSpaces.avatar,
+  network: snapshotSpaces.network,
+  verified: snapshotSpaces.verified,
+  flagged: snapshotSpaces.flagged,
+  flagCode: snapshotSpaces.flagCode,
+  hibernated: snapshotSpaces.hibernated,
+  turbo: snapshotSpaces.turbo,
+  activeProposals: snapshotSpaces.activeProposals,
+  website: snapshotSpaces.website,
+  discussions: snapshotSpaces.discussions,
+  categories: snapshotSpaces.categories,
+  followersCount: snapshotSpaces.followersCount,
+  votesCount: snapshotSpaces.votesCount,
+  twitter: snapshotSpaces.twitter,
+  github: snapshotSpaces.github,
+  coingecko: snapshotSpaces.coingecko,
+  memberCount: snapshotSpaces.memberCount,
+  proposalCount: snapshotSpaces.proposalCount,
+} as const;
+
+async function fetchSpaces(query: NormalizedSpaceFilters): Promise<SlimSpaceRecord[]> {
   if (!hasDatabase) return [];
 
   try {
     const db = getDb();
+    const locale = query.locale && query.locale !== "en" ? query.locale : null;
 
     const categoryJson = query.category && query.category !== "All" ? JSON.stringify([query.category]) : undefined;
     const conditions: (SQL | undefined)[] = [
@@ -327,38 +354,31 @@ async function fetchSpaces(query: SpaceFilters = {}): Promise<SlimSpaceRecord[]>
       categoryJson ? sql`${snapshotSpaces.categories} @> ${categoryJson}::jsonb` : undefined,
     ];
 
-    const baseQuery = db
-      .select({
-        id: snapshotSpaces.id,
-        name: snapshotSpaces.name,
-        about: snapshotSpaces.about,
-        avatar: snapshotSpaces.avatar,
-        network: snapshotSpaces.network,
-        verified: snapshotSpaces.verified,
-        flagged: snapshotSpaces.flagged,
-        flagCode: snapshotSpaces.flagCode,
-        hibernated: snapshotSpaces.hibernated,
-        turbo: snapshotSpaces.turbo,
-        activeProposals: snapshotSpaces.activeProposals,
-        website: snapshotSpaces.website,
-        discussions: snapshotSpaces.discussions,
-        categories: snapshotSpaces.categories,
-        followersCount: snapshotSpaces.followersCount,
-        votesCount: snapshotSpaces.votesCount,
-        twitter: snapshotSpaces.twitter,
-        github: snapshotSpaces.github,
-        coingecko: snapshotSpaces.coingecko,
-        memberCount: snapshotSpaces.memberCount,
-        proposalCount: snapshotSpaces.proposalCount,
-      })
-      .from(snapshotSpaces)
-      .where(and(...conditions));
+    const orderBy = query.sort === "followers"
+      ? [desc(snapshotSpaces.memberCount), snapshotSpaces.name] as const
+      : [desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name] as const;
 
-    if (query.sort === "followers") {
-      return await baseQuery.orderBy(desc(snapshotSpaces.memberCount), snapshotSpaces.name).limit(query.limit ?? 2000);
+    const limit = query.limit ?? 2000;
+
+    if (locale) {
+      return await db
+        .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
+        .from(snapshotSpaces)
+        .leftJoin(
+          spaceTranslations,
+          and(eq(spaceTranslations.spaceId, snapshotSpaces.id), eq(spaceTranslations.locale, locale))
+        )
+        .where(and(...conditions))
+        .orderBy(...orderBy)
+        .limit(limit);
     }
 
-    return await baseQuery.orderBy(desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name).limit(query.limit ?? 2000);
+    return await db
+      .select(SPACE_SELECT_FIELDS)
+      .from(snapshotSpaces)
+      .where(and(...conditions))
+      .orderBy(...orderBy)
+      .limit(limit);
   } catch {
     return [];
   }
@@ -370,6 +390,7 @@ type NormalizedSpaceFilters = {
   verified?: boolean;
   sort: "activity" | "followers";
   limit: number;
+  locale?: string;
 };
 
 function normalizeSpaceFilters(query: SpaceFilters = {}): NormalizedSpaceFilters {
@@ -379,6 +400,7 @@ function normalizeSpaceFilters(query: SpaceFilters = {}): NormalizedSpaceFilters
     verified: typeof query.verified === "boolean" ? query.verified : undefined,
     sort: query.sort === "followers" ? "followers" : "activity",
     limit: normalizeLimit(query.limit, 200),
+    locale: normalizeTranslationLocale(query.locale),
   };
 }
 
@@ -403,44 +425,32 @@ function normalizeProposalFilters(query: ProposalFilters = {}): NormalizedPropos
   };
 }
 
-async function fetchSpaceBySlug(slug: string): Promise<SlimSpaceRecord | null> {
-  if (!hasDatabase) {
-    return null;
-  }
+async function fetchSpaceBySlug(slug: string, locale?: string): Promise<SlimSpaceRecord | null> {
+  if (!hasDatabase) return null;
 
   try {
     const db = getDb();
-    const space = await db
-      .select({
-        id: snapshotSpaces.id,
-        name: snapshotSpaces.name,
-        about: snapshotSpaces.about,
-        avatar: snapshotSpaces.avatar,
-        network: snapshotSpaces.network,
-        verified: snapshotSpaces.verified,
-        flagged: snapshotSpaces.flagged,
-        flagCode: snapshotSpaces.flagCode,
-        hibernated: snapshotSpaces.hibernated,
-        turbo: snapshotSpaces.turbo,
-        activeProposals: snapshotSpaces.activeProposals,
-        website: snapshotSpaces.website,
-        discussions: snapshotSpaces.discussions,
-        categories: snapshotSpaces.categories,
-        followersCount: snapshotSpaces.followersCount,
-        votesCount: snapshotSpaces.votesCount,
-        twitter: snapshotSpaces.twitter,
-        github: snapshotSpaces.github,
-        coingecko: snapshotSpaces.coingecko,
-        memberCount: snapshotSpaces.memberCount,
-        proposalCount: snapshotSpaces.proposalCount,
-      })
+    const normalizedLocale = locale && locale !== "en" ? locale : null;
+
+    if (normalizedLocale) {
+      const [match] = await db
+        .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
+        .from(snapshotSpaces)
+        .leftJoin(
+          spaceTranslations,
+          and(eq(spaceTranslations.spaceId, snapshotSpaces.id), eq(spaceTranslations.locale, normalizedLocale))
+        )
+        .where(eq(snapshotSpaces.id, slug))
+        .limit(1);
+      return match ?? null;
+    }
+
+    const [match] = await db
+      .select(SPACE_SELECT_FIELDS)
       .from(snapshotSpaces)
       .where(eq(snapshotSpaces.id, slug))
       .limit(1);
-
-    const match = space[0];
-    if (!match) return null;
-    return match;
+    return match ?? null;
   } catch {
     return null;
   }
@@ -1079,7 +1089,10 @@ function mapPlatformStats(record: PlatformStatsRecord): PlatformStats {
 
 function mapSpace(space: SlimSpaceRecord): Space {
   const categories = deriveSpaceCategories(space);
-  const summary = normalizeText(space.about) || `Governance space on ${space.network ?? "Snapshot"}.`;
+  const summary =
+    (space.translatedAbout ? normalizeText(space.translatedAbout) : null) ||
+    normalizeText(space.about) ||
+    `Governance space on ${space.network ?? "Snapshot"}.`;
 
   const snapshotUrl = getSnapshotSpaceUrl(space.id);
 

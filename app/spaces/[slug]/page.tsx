@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function SpaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const [tSpaces, locale, { slug }] = await Promise.all([getTranslations("spaces"), getLocale(), params]);
   const [space, proposals] = await Promise.all([
-    getSpaceBySlug(slug),
+    getSpaceBySlug(slug, locale),
     listSpaceProposals(slug, { sort: "time", limit: INITIAL_SPACE_PROPOSAL_LIMIT, locale }),
   ]);
 
@@ -62,7 +62,7 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
         </div>
       )}
       <div className="grid gap-8 lg:grid-cols-[1fr_0.8fr]">
-        <div className="border border-border bg-card p-5 shadow-panel md:p-8">
+        <div className="border border-border bg-card p-5 shadow-panel md:p-6 lg:p-8">
           <div className="flex items-start gap-4">
             <Avatar className="size-12 shrink-0 md:size-14">
               {space.avatar ? <AvatarImage src={space.avatar} alt={space.name} /> : null}
@@ -70,13 +70,13 @@ export default async function SpaceDetailPage({ params }: { params: Promise<{ sl
             </Avatar>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 md:gap-3">
-                <h1 className="text-balance font-serif text-3xl leading-tight md:text-5xl">{space.name}</h1>
+                <h1 className="text-balance font-serif text-3xl leading-tight md:text-4xl lg:text-5xl">{space.name}</h1>
                 {space.verified ? <BadgeCheck className="size-5 shrink-0 text-info" /> : null}
               </div>
               <p className="mt-2 break-all font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground md:text-xs md:tracking-[0.24em]">{space.slug}</p>
             </div>
           </div>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground md:text-lg md:leading-8">{space.summary}</p>
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground md:text-base md:leading-8">{space.summary}</p>
           <div className="mt-6 flex flex-wrap gap-2">
             {space.categories.map((category) => (
               <Badge key={category} variant="muted">

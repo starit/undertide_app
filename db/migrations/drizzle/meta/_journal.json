@@ -57,6 +57,13 @@
       "when": 1779536340000,
       "tag": "0007_empty_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779584234154,
+      "tag": "0008_lucky_joshua_kane",
+      "breakpoints": true
     }
   ]
 }

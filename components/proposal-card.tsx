@@ -29,7 +29,7 @@ export function ProposalCard({ proposal, compact = false }: { proposal: Proposal
       <CardContent className={compact ? "flex-1 p-5 pt-0" : "flex-1"}>
         <p className="text-sm leading-6 text-muted-foreground md:leading-7">{proposal.summary}</p>
       </CardContent>
-      <CardFooter className="min-h-24 flex flex-col items-start gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <CardFooter className="flex flex-col items-start gap-3 border-t border-border pt-4 sm:min-h-16 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full items-center justify-between gap-3 text-xs text-muted-foreground sm:w-auto sm:justify-start sm:gap-4">
           <div className="flex items-center gap-2">
             <span className="uppercase tracking-[0.22em]">{tProposals("published")}</span>

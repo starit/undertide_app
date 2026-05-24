@@ -159,6 +159,23 @@ export const proposalTranslations = pgTable(
   })
 );
 
+export const spaceTranslations = pgTable(
+  "space_translations",
+  {
+    spaceId: text("space_id").notNull(),
+    locale: text("locale").notNull(),
+    about: text("about"),
+    translatedBy: text("translated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.spaceId, table.locale] }),
+    localeIdx: index("idx_space_translations_locale").on(table.locale),
+    spaceIdIdx: index("idx_space_translations_space_id").on(table.spaceId),
+  })
+);
+
 export const platformStats = pgTable("platform_stats", {
   id: text("id").primaryKey().default("global"),
   spacesCount: integer("spaces_count").notNull().default(0),
@@ -333,6 +350,7 @@ export const schema = {
   snapshotSpaceMembers,
   snapshotProposals,
   proposalTranslations,
+  spaceTranslations,
   platformStats,
   snapshotSyncState,
   snapshotSyncRuns,

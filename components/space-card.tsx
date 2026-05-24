@@ -40,7 +40,7 @@ export function SpaceCard({ space }: { space: Space }) {
         </div>
         <p className="line-clamp-4 text-sm leading-6 text-muted-foreground md:leading-7">{space.summary}</p>
       </CardContent>
-      <CardFooter className="min-h-24 flex flex-col items-start gap-4 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <CardFooter className="flex flex-col items-start gap-4 border-t border-border pt-4 sm:min-h-16 sm:flex-row sm:items-center sm:justify-between">
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{tSpaces("followersLabel")}</p>

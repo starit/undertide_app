@@ -331,14 +331,14 @@ async function getSourceProposals(batchLimit: number, locales: string[], proposa
   // When not overwriting, push the "needs translation" filter into SQL so we never
   // waste iterations scanning already-translated proposals on restart.
   if (!overwrite && locales.length > 0) {
-    const localeList = locales.map((l) => `'${l}'`).join(", ");
+    const localeParams = drizzleSql.join(locales.map((l) => drizzleSql`${l}`), drizzleSql.raw(", "));
     return baseQuery
       .where(
         drizzleSql`(
           SELECT COUNT(DISTINCT pt.locale)::int
           FROM proposal_translations pt
           WHERE pt.proposal_id = ${snapshotProposals.id}
-            AND pt.locale IN (${drizzleSql.raw(localeList)})
+            AND pt.locale IN (${localeParams})
         ) < ${locales.length}
         AND NOT (
           COALESCE(LENGTH(TRIM(COALESCE(${snapshotProposals.body}, ''))), 0) < ${LOW_VALUE_MIN_BODY_LENGTH}
@@ -709,7 +709,7 @@ async function translateTitleAndSummaryRound(args: {
     const fallback =
       lastError.finishReason === "length"
         ? null
-        : extractPartialMeta(lastError.content, args.title, args.excerpt);
+        : extractPartialMeta(lastError.content);
     if (fallback && isRecoveredMetaSafe(fallback, args.title, args.excerpt)) {
       console.warn(
         `[translate] recovered partial meta for ${args.locale} from malformed JSON (${lastError.hint}, finish_reason=${lastError.finishReason ?? "?"})`
@@ -941,7 +941,7 @@ function extractMetaFields(content: string) {
   };
 }
 
-function extractPartialMeta(content: string, fallbackTitle: string, fallbackSummary: string) {
+function extractPartialMeta(content: string) {
   const repaired = repairQuotedJsonAssist(content);
   const titleMatch = repaired.match(/"title"\s*:\s*"([\s\S]*?)"\s*,/);
   const summaryClosedMatch = repaired.match(/"summary"\s*:\s*"([\s\S]*?)"\s*(?:[,}])/);
