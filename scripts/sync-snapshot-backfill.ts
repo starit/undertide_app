@@ -27,7 +27,7 @@ import {
   runSync,
   safelyUpsertSyncState,
   stringifyError,
-  upsertProposal,
+  upsertProposalsBatch,
   type SnapshotProposal,
 } from "./sync-snapshot-shared";
 
@@ -36,8 +36,9 @@ const options = {
   proposalIds: readArgValues("--proposal-id"),
 };
 
-const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required.");
+const _databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+if (!_databaseUrl) throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required.");
+const databaseUrl: string = _databaseUrl;
 const db = createDb(databaseUrl);
 
 // Separate entity so backfill cursor never pollutes the incremental state
@@ -63,6 +64,7 @@ async function runBackfill(): Promise<number> {
   let upserted = 0;
   let highestCreatedTs = 0; // tracks the newest proposal seen (first batch)
   const touchedSpaceIds = new Set<string>();
+  const batch: SnapshotProposal[] = [];
 
   if (beforeCreated) {
     console.log(`[backfill] resuming from cursor created_lt=${beforeCreated}`);
@@ -81,20 +83,23 @@ async function runBackfill(): Promise<number> {
       if (!proposal?.space?.id) continue;
       const createdTs = Number(proposal.created ?? 0);
       if (createdTs > highestCreatedTs) highestCreatedTs = createdTs;
-      await upsertProposal(db, proposal);
+      batch.push(proposal);
       touchedSpaceIds.add(proposal.space.id);
-      upserted += 1;
     }
 
     const oldestInBatch = Math.min(...proposals.map((p) => Number(p.created ?? 0)));
     beforeCreated = Number.isFinite(oldestInBatch) && oldestInBatch > 0 ? oldestInBatch : null;
+
+    const flushed = await upsertProposalsBatch(databaseUrl, batch);
+    batch.length = 0;
+    upserted += flushed;
 
     // Persist cursor so we can resume if interrupted
     await safelyUpsertSyncState(db, BACKFILL_ENTITY, {
       last_cursor: beforeCreated ? String(beforeCreated) : null,
     });
 
-    console.log(`[backfill] ${upserted} rows total, oldest in batch created=${oldestInBatch}`);
+    console.log(`[backfill] ${upserted} rows total (flushed ${flushed}), oldest in batch created=${oldestInBatch}`);
 
     if (proposals.length < PROPOSAL_PAGE_SIZE || !beforeCreated) break;
 
@@ -102,6 +107,11 @@ async function runBackfill(): Promise<number> {
       console.log(`[backfill] reached --stop-at=${options.stopAt}, stopping early`);
       break;
     }
+  }
+
+  if (batch.length > 0) {
+    upserted += await upsertProposalsBatch(databaseUrl, batch);
+    batch.length = 0;
   }
 
   // Refresh proposal counts for all touched spaces
@@ -125,27 +135,37 @@ async function runBackfill(): Promise<number> {
 async function syncTargetedProposals(proposalIds: string[]): Promise<number> {
   let upserted = 0;
   const touchedSpaceIds = new Set<string>();
+  const pending: SnapshotProposal[] = [];
 
   for (const proposalId of proposalIds) {
-    const batch = await fetchGraphQL<{ proposals: SnapshotProposal[] }>(
+    const result = await fetchGraphQL<{ proposals: SnapshotProposal[] }>(
       `query GetProposal($where: ProposalWhere) {
         proposals(first: 1, where: $where) { ${PROPOSAL_QUERY_FIELDS} }
       }`,
       { where: { id: proposalId } }
     );
-    const proposal = batch?.proposals?.[0];
+    const proposal = result?.proposals?.[0];
     if (!proposal) {
       console.warn(`[backfill] proposal not found on Snapshot: ${proposalId}`);
       continue;
     }
     try {
-      await upsertProposal(db, proposal);
+      pending.push(proposal);
+      if (pending.length >= 100) {
+        upserted += await upsertProposalsBatch(databaseUrl, pending);
+        pending.length = 0;
+      }
       if (proposal.space?.id) touchedSpaceIds.add(proposal.space.id);
-      console.log(`[backfill] targeted upsert done: ${proposalId}`);
-      upserted += 1;
+      console.log(`[backfill] targeted upsert queued: ${proposalId}`);
     } catch (error) {
       console.error(`[backfill] targeted upsert failed for ${proposalId}: ${stringifyError(error)}`);
     }
+  }
+
+  // Flush remaining
+  if (pending.length > 0) {
+    upserted += await upsertProposalsBatch(databaseUrl, pending);
+    pending.length = 0;
   }
 
   await refreshSpaceProposalCounts(db, Array.from(touchedSpaceIds));

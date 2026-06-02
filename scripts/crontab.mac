@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Undertide governance sync — crontab
+#
+# Install:
+#   mkdir -p /path/to/project/logs
+#   crontab scripts/crontab.example          # replace (overwrites existing)
+#   crontab -l | cat - scripts/crontab.example | crontab -   # append
+#
+# Before installing, update:
+#   DIR   → absolute path to this project
+#   PNPM  → output of: which pnpm  (or: fnm exec --using=22 which pnpm)
+#   LOG   → where to write log files (directory must exist)
+#
+# Environment variables (DATABASE_URL, TALLY_API_KEY, DEEPSEEK_API_KEY, …)
+# are loaded from the project's .env file via dotenv/config automatically.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SHELL=/bin/zsh
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+DIR=/Users/clawbot/src/undertide-app-v2
+PNPM=/opt/homebrew/bin/pnpm
+LOG=/Users/clawbot/src/undertide-app-v2/logs
+
+# ── Snapshot spaces ───────────────────────────────────────────────────────────
+# Stateless incremental — derives watermark from DB automatically.
+# New spaces are rare; every 30 min is sufficient.
+*/30 * * * * cd $DIR && $PNPM sync:snapshot:spaces >> $LOG/spaces.log 2>&1
+
+# ── Snapshot proposals ────────────────────────────────────────────────────────
+# Three stages: new proposals + active refresh + recently-closed.
+# Run frequently to keep vote counts current.
+*/15 * * * * cd $DIR && $PNPM sync:snapshot:proposals --from-db >> $LOG/proposals.log 2>&1
+
+# ── Tally sync ────────────────────────────────────────────────────────────────
+# Organizations: full cursor scan (stats refresh needed).
+# Proposals: stateless incremental per org (stops at DB watermark).
+0 */2 * * * cd $DIR && $PNPM sync:tally >> $LOG/tally.log 2>&1
+
+# ── Link governance protocols ─────────────────────────────────────────────────
+# Rebuilds governance_protocols / governance_protocol_sources from synced data.
+# Run after syncs; offset by 90 min so it runs after both Snapshot and Tally.
+30 1,3,5,7,9,11,13,15,17,19,21,23 * * * cd $DIR && $PNPM link:protocols >> $LOG/link-protocols.log 2>&1
+
+# ── Translate proposals ───────────────────────────────────────────────────────
+# LLM-powered; costly and slow. Runs every 6 hours, 500 proposals per run.
+# Adjust --limit based on backlog and cost tolerance.
+0 */6 * * * cd $DIR && $PNPM translate:proposals --limit 500 >> $LOG/translate.log 2>&1
+
+# ── Translate spaces ──────────────────────────────────────────────────────────
+# Space about-text translation; much smaller volume than proposals.
+# Daily at 5am is more than enough; adjust --limit to taste.
+0 5 * * * cd $DIR && $PNPM translate:spaces --limit 100 >> $LOG/translate-spaces.log 2>&1
+
+# ── Sync health check ─────────────────────────────────────────────────────────
+# Exits 1 if any sync is critically stale. Wire to your alerting of choice:
+#   ... || echo "undertide sync stale" | mail -s "sync alert" you@example.com
+# Or just monitor the log for lines containing "STALE".
+0 * * * * cd $DIR && $PNPM check:sync:health >> $LOG/health.log 2>&1
+
+# ── Monthly backfill ──────────────────────────────────────────────────────────
+# Proposals: full historical re-scan to fill any gaps the incremental sync may have missed.
+# Spaces: --full re-scans all spaces to pick up renames/deletions missed by incremental.
+# Both run at 3am on the 1st of each month; safe to interrupt and re-run.
+0 3 1 * * cd $DIR && $PNPM sync:snapshot:backfill >> $LOG/backfill.log 2>&1
+30 3 1 * * cd $DIR && $PNPM sync:snapshot:spaces --full >> $LOG/spaces-full.log 2>&1
+#
+# Tally: full historical proposal re-scan across all known orgs.
+# Runs at 4am on the 1st. Resumable — if interrupted, re-running picks up from last completed org.
+0 4 1 * * cd $DIR && $PNPM sync:tally:backfill >> $LOG/tally-backfill.log 2>&1

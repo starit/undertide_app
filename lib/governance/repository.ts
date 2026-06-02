@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { SQL, and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import {
   governanceProtocolSources,
@@ -55,76 +56,131 @@ type TallyProposalRecord = {
   organization: Pick<typeof tallyOrganizations.$inferSelect, "id" | "slug" | "name" | "icon"> | null;
 };
 
+const GOVERNANCE_PROTOCOL_CACHE_SECONDS = 300;
+const GOVERNANCE_PROPOSAL_CACHE_SECONDS = 120;
+
+const getCachedProtocols = unstable_cache(
+  async (query: ProtocolFilters) => {
+    const limit = normalizeLimit(query.limit, 50);
+    const records = await fetchProtocols(query, limit);
+    const protocolIds = records.map((record) => record.id);
+    const sources = await fetchProtocolSources(protocolIds);
+    const sourceRefsByProtocolId = groupSourceRefs(sources);
+
+    return records.map((record) => mapProtocol(record, sourceRefsByProtocolId.get(record.id) ?? []));
+  },
+  ["governance-protocols"],
+  {
+    revalidate: GOVERNANCE_PROTOCOL_CACHE_SECONDS,
+    tags: ["governance", "snapshot", "tally"],
+  }
+);
+
+const getCachedProtocol = unstable_cache(
+  async (idOrSlug: string) => {
+    const record = await fetchProtocolByIdOrSlug(idOrSlug);
+    if (!record) return null;
+
+    const sourceRefs = await fetchProtocolSources([record.id]);
+    return mapProtocol(record, sourceRefs.map(mapProtocolSourceRef));
+  },
+  ["governance-protocol"],
+  {
+    revalidate: GOVERNANCE_PROTOCOL_CACHE_SECONDS,
+    tags: ["governance", "snapshot", "tally"],
+  }
+);
+
+const getCachedProtocolSources = unstable_cache(
+  async (idOrSlug: string) => {
+    const record = await fetchProtocolByIdOrSlug(idOrSlug);
+    if (!record) return null;
+
+    const sources = await fetchProtocolSources([record.id]);
+    return {
+      protocol: {
+        id: record.id,
+        slug: record.slug,
+        name: record.name,
+      },
+      sources: sources.map(mapProtocolSourceRef),
+    };
+  },
+  ["governance-protocol-sources"],
+  {
+    revalidate: GOVERNANCE_PROTOCOL_CACHE_SECONDS,
+    tags: ["governance", "snapshot", "tally"],
+  }
+);
+
+const getCachedProtocolProposals = unstable_cache(
+  async (idOrSlug: string, query: ProtocolProposalFilters) => {
+    const protocol = await getCachedProtocol(idOrSlug);
+    if (!protocol) return null;
+
+    const limit = normalizeLimit(query.limit, 50);
+    const requestedSource = query.source && query.source !== "all" ? query.source : undefined;
+    const sourceRefs = requestedSource
+      ? protocol.sourceRefs.filter((ref) => ref.source === requestedSource)
+      : protocol.sourceRefs;
+
+    const [snapshotRows, tallyRows] = await Promise.all([
+      !requestedSource || requestedSource === "snapshot"
+        ? fetchSnapshotProtocolProposals(sourceRefs.filter((ref) => ref.source === "snapshot"), query, limit)
+        : Promise.resolve([]),
+      !requestedSource || requestedSource === "tally"
+        ? fetchTallyProtocolProposals(sourceRefs.filter((ref) => ref.source === "tally"), query, limit)
+        : Promise.resolve([]),
+    ]);
+
+    const proposals = [
+      ...snapshotRows.map((row) => mapSnapshotProposal(row, protocol)),
+      ...tallyRows.map((row) => mapTallyProposal(row, protocol)),
+    ]
+      .filter((proposal) => matchesProposalFilters(proposal, query))
+      .sort((a, b) => compareProposals(a, b, query.sort))
+      .slice(0, limit);
+
+    return proposals;
+  },
+  ["governance-protocol-proposals"],
+  {
+    revalidate: GOVERNANCE_PROPOSAL_CACHE_SECONDS,
+    tags: ["governance", "snapshot", "tally"],
+  }
+);
+
 export async function listGovernanceProtocols(
   query: ProtocolFilters = {}
 ): Promise<GovernanceListResponse<GovernanceProtocol>> {
   if (!hasDatabase) return emptyListResponse([]);
 
-  const limit = normalizeLimit(query.limit, 50);
-  const records = await fetchProtocols(query, limit);
-  const protocolIds = records.map((record) => record.id);
-  const sources = await fetchProtocolSources(protocolIds);
-  const sourceRefsByProtocolId = groupSourceRefs(sources);
-
-  return withSourceMeta(
-    records.map((record) => mapProtocol(record, sourceRefsByProtocolId.get(record.id) ?? []))
-  );
+  const data = await getCachedProtocols(query);
+  return withSourceMeta(data);
 }
 
 export async function getGovernanceProtocol(idOrSlug: string): Promise<GovernanceProtocol | null> {
-  const record = await fetchProtocolByIdOrSlug(idOrSlug);
-  if (!record) return null;
+  if (!hasDatabase) return null;
 
-  const sourceRefs = await fetchProtocolSources([record.id]);
-  return mapProtocol(record, sourceRefs.map(mapProtocolSourceRef));
+  return getCachedProtocol(idOrSlug);
 }
 
 export async function listGovernanceProtocolSources(
   idOrSlug: string
 ): Promise<{ protocol: Pick<GovernanceProtocol, "id" | "slug" | "name">; sources: GovernanceProtocolSourceRef[] } | null> {
-  const record = await fetchProtocolByIdOrSlug(idOrSlug);
-  if (!record) return null;
+  if (!hasDatabase) return null;
 
-  const sources = await fetchProtocolSources([record.id]);
-  return {
-    protocol: {
-      id: record.id,
-      slug: record.slug,
-      name: record.name,
-    },
-    sources: sources.map(mapProtocolSourceRef),
-  };
+  return getCachedProtocolSources(idOrSlug);
 }
 
 export async function listGovernanceProtocolProposals(
   idOrSlug: string,
   query: ProtocolProposalFilters = {}
 ): Promise<GovernanceListResponse<GovernanceProposalListItem> | null> {
-  const protocol = await getGovernanceProtocol(idOrSlug);
-  if (!protocol) return null;
+  if (!hasDatabase) return null;
 
-  const limit = normalizeLimit(query.limit, 50);
-  const requestedSource = query.source && query.source !== "all" ? query.source : undefined;
-  const sourceRefs = requestedSource
-    ? protocol.sourceRefs.filter((ref) => ref.source === requestedSource)
-    : protocol.sourceRefs;
-
-  const [snapshotRows, tallyRows] = await Promise.all([
-    !requestedSource || requestedSource === "snapshot"
-      ? fetchSnapshotProtocolProposals(sourceRefs.filter((ref) => ref.source === "snapshot"), query, limit)
-      : Promise.resolve([]),
-    !requestedSource || requestedSource === "tally"
-      ? fetchTallyProtocolProposals(sourceRefs.filter((ref) => ref.source === "tally"), query, limit)
-      : Promise.resolve([]),
-  ]);
-
-  const proposals = [
-    ...snapshotRows.map((row) => mapSnapshotProposal(row, protocol)),
-    ...tallyRows.map((row) => mapTallyProposal(row, protocol)),
-  ]
-    .filter((proposal) => matchesProposalFilters(proposal, query))
-    .sort((a, b) => compareProposals(a, b, query.sort))
-    .slice(0, limit);
+  const proposals = await getCachedProtocolProposals(idOrSlug, query);
+  if (!proposals) return null;
 
   return withSourceMeta(proposals);
 }

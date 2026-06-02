@@ -721,3 +721,117 @@ export default defineConfig({
 ```
 
 Prefers `DATABASE_URL_UNPOOLED` for direct (non-pooled) connections required by DDL operations.
+
+---
+
+## SQL Performance Notes
+
+### Index design
+
+| Table | Index | Purpose |
+|---|---|---|
+| `snapshot_spaces` | `verified_activity` (partial `WHERE flagged=false AND verified=true`) | Primary space-list query — `ORDER BY proposal_count DESC, member_count DESC, name` with LIMIT |
+| `snapshot_spaces` | `name_trgm` (GIN) | `ILIKE '%query%'` search |
+| `snapshot_spaces` | `categories_gin` (GIN) | `categories @> '["protocol"]'` filter |
+| `snapshot_proposals` | `feed` (partial `WHERE flagged=false`) | Home page proposal feed — `ORDER BY created_at DESC` |
+| `snapshot_proposals` | `space_feed` (partial `WHERE flagged=false`) | Space detail page proposals — `(space_id, created_at DESC)` |
+| `snapshot_proposals` | `title_trgm` (GIN) | `ILIKE '%query%'` search |
+| `snapshot_proposals` | `created_ts` (DESC) | `SELECT MAX(created_ts)` watermark reads |
+| `snapshot_sync_runs` | `latest` composite `(entity_type, created_at DESC)` | `SELECT DISTINCT ON (entity_type) ... ORDER BY entity_type, created_at DESC` |
+
+### Query patterns
+
+- **Space list** — Default path (verified=true, no locale, no search) hits `verified_activity` partial index → Index Only Scan → LIMIT. Locale-aware queries add `LEFT JOIN space_translations` which requires a Bitmap Scan + Sort.
+- **Proposal list** — Default path hits `feed` partial index → Nested Loop JOIN spaces → LIMIT. Status-filtered queries use `state` index.
+- **Search** — Uses CTE pipeline: `title_matches` (GIN trigram) UNION `space_proposal_matches` (space join) → final JOIN + ORDER BY + LIMIT. Intermediate sorts were removed — they were redundant with the final `ORDER BY`.
+- **Sync state reads** — `DISTINCT ON (entity_type) ... ORDER BY entity_type, created_at DESC` uses the composite `latest` index for Index Only Scan.
+
+### Batch writes
+
+All Snapshot proposal sync scripts use **batch upsert** via `upsertProposalsBatch()` instead of row-by-row `upsertProposal()`. The batch function:
+
+1. Collects proposals into a buffer
+2. Flushes every 100 rows as a single `INSERT INTO ... VALUES (...), (...) ON CONFLICT DO UPDATE SET ...`
+3. Uses parameterized `neon().unsafe()` (raw SQL) because Drizzle ORM's `onConflictDoUpdate` doesn't support per-row different values in batch mode
+
+Key files:
+- `scripts/sync-snapshot-shared.ts` — `upsertProposalsBatch(databaseUrl, proposals[])` and `upsertProposal(db, proposal)` (single-row, kept for compatibility)
+- `scripts/sync-snapshot-proposals.ts` — 3 stages (new, active, recent-closed) each flush after every API page
+- `scripts/sync-snapshot-backfill.ts` — `runBackfill` flushes per page; `syncTargetedProposals` flushes every 100 targeted IDs
+
+`refreshSpaceProposalCounts` also uses a single `UPDATE ... FROM (SELECT ... GROUP BY) WHERE id = subq.sid` instead of N individual UPDATEs.
+
+---
+
+## Deployment
+
+The application is deployed on **Vercel** (Serverless Functions).
+
+### Runtime constraints
+
+- Serverless Functions are stateless containers — **no in-memory caching** between requests. Each invocation may land on a different instance.
+- Neon (serverless Postgres) uses HTTP transport: queries complete in ~2–5ms under normal conditions, making an in-memory cache layer unnecessary on Vercel.
+- `unstable_cache` (Next.js) persists across Serverless Function instances via Vercel's global cache layer. It works for Server Component data fetching (`page.tsx`) but does **not** apply to API route handlers (`/api/*`).
+
+---
+
+## Caching Strategy
+
+The caching approach accounts for the Vercel Serverless architecture:
+
+| Layer | Scope | When it applies |
+|---|---|---|
+| `unstable_cache` (Next.js) | Server Component renders | Static/dynamic page generation via `page.tsx` |
+| HTTP `Cache-Control` headers | API route responses | CDN-level caching (Vercel Edge Network / Cloudflare) |
+
+### Server Component caching
+
+`lib/repository.ts` wraps the main data-fetching entry points with `unstable_cache`:
+
+```typescript
+const getCachedSpaces = unstable_cache(fetchSpaces, ["spaces-list"], { revalidate: 120, tags: ["spaces", "translations"] });
+const getCachedProposals = unstable_cache(fetchProposals, ["proposals-list"], { revalidate: 60, tags: ["proposals", "spaces", "translations"] });
+```
+
+- `listSpaces(query)` → `getCachedSpaces(normalizeSpaceFilters(query))`
+- `listProposals(query)` → `getCachedProposals(normalizeProposalFilters(query))`
+- `getPlatformStats()` → `getCachedPlatformStats()`
+
+Cache tags enable fine-grained invalidation via `revalidateTag()`.
+
+### API route HTTP caching
+
+All `/api/*` route handlers set:
+```
+Cache-Control: public, s-maxage=<N>, stale-while-revalidate=<3xN>
+```
+
+- `/api/snapshot/spaces`: s-maxage=120s
+- `/api/snapshot/proposals`: s-maxage=60s
+
+Client components fetch from `/api/snapshot/*`. These requests bypass `unstable_cache` and rely on Vercel's Edge Network CDN to absorb repeated requests.
+
+### Cache invalidation
+
+The `unstable_cache` tags allow programmatic revalidation. A sync webhook or deployment hook can call:
+
+```typescript
+import { revalidateTag } from "next/cache";
+revalidateTag("spaces");  // busts all space caches
+revalidateTag("proposals"); // busts all proposal caches
+```
+
+---
+
+## Error Handling
+
+### Database error logging
+
+All `fetch*` functions in `lib/repository.ts` wrap their DB queries in try/catch and call `logDbError(context, error)` before returning empty fallback values. This ensures database errors are visible in Vercel Function logs rather than silently swallowed.
+
+**`logDbError(context, error)`** (defined at top of `lib/repository.ts`) logs to `console.error` with the function name and first 3 lines of stack trace.
+
+### Graceful degradation
+
+- Most fetch functions return `[]` or `null` on error → UI shows empty state, never crashes
+- `fetchPlatformStats` has a two-tier fallback: tries `platform_stats` table → falls through to live aggregate queries → returns `emptyPlatformStats()` if both fail

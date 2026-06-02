@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { count, eq, inArray, sql as drizzleSql } from "drizzle-orm";
+import { eq, inArray, sql as drizzleSql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
   snapshotProposals,
@@ -283,27 +283,132 @@ export async function upsertProposal(db: SyncDb, proposal: SnapshotProposal): Pr
   );
 }
 
+const BATCH_FLUSH_SIZE = 100;
+
+/**
+ * Convert a SnapshotProposal to the params needed for the batch upsert SQL.
+ * Returns a flat array of values in column order.
+ */
+function proposalToRow(p: SnapshotProposal): unknown[] {
+  const s = sanitizeValue(p);
+  return [
+    s.id,
+    s.space.id,
+    s.title ?? s.id,
+    s.body ?? null,
+    JSON.stringify(s.choices ?? []),
+    Number(s.start ?? 0),
+    Number(s.end ?? 0),
+    Number(s.created ?? 0),
+    s.discussion || null,
+    s.flagged ?? false,
+    s.flagCode ?? 0,
+    s.symbol ?? null,
+    JSON.stringify(s.labels ?? []),
+    s.quorum != null ? String(s.quorum) : null,
+    s.quorumType ?? null,
+    s.privacy ?? null,
+    s.link ?? null,
+    s.app ?? null,
+    s.snapshot ?? null,
+    s.state ?? "unknown",
+    s.author ?? "",
+    s.network ?? null,
+    JSON.stringify(s.scores ?? null),
+    JSON.stringify(s.scores_by_strategy ?? null),
+    normalizeNumericValue(s.scores_total),
+    s.scores_state ?? null,
+    normalizeNumericValue(s.scores_total_value),
+    s.scores_updated ? Number(s.scores_updated) : null,
+    Number(s.votes ?? 0),
+    s.updated ? Number(s.updated) : null,
+    JSON.stringify(s.strategies ?? []),
+    JSON.stringify(s.plugins ?? null),
+    JSON.stringify(s),
+  ];
+}
+
+const BATCH_COLUMNS = [
+  "id", "space_id", "title", "body", "choices",
+  "start_ts", "end_ts", "created_ts", "discussion",
+  "flagged", "flag_code", "symbol", "labels",
+  "quorum", "quorum_type", "privacy", "link", "app",
+  "snapshot_block", "state", "author", "network",
+  "scores", "scores_by_strategy", "scores_total",
+  "scores_state", "scores_total_value", "scores_updated_ts",
+  "votes_count", "updated_ts", "strategies", "plugins", "raw",
+] as const;
+
+/**
+ * Batch upsert proposals using a single INSERT ... ON CONFLICT DO UPDATE
+ * statement. Flushes every BATCH_FLUSH_SIZE (100) rows.
+ *
+ * @param databaseUrl - The Neon database connection string. Pass
+ *   `DATABASE_URL_UNPOOLED || DATABASE_URL` from the caller's scope.
+ * Returns the number of rows processed.
+ */
+export async function upsertProposalsBatch(
+  databaseUrl: string,
+  proposals: SnapshotProposal[]
+): Promise<number> {
+  if (proposals.length === 0) return 0;
+
+  const BATCH_SIZE = BATCH_FLUSH_SIZE;
+  let processed = 0;
+
+  for (let offset = 0; offset < proposals.length; offset += BATCH_SIZE) {
+    const batch = proposals.slice(offset, offset + BATCH_SIZE);
+    const allParams: unknown[] = [];
+    const valuePlaceholders: string[] = [];
+
+    for (const proposal of batch) {
+      const row = proposalToRow(proposal);
+      const placeholders = row.map((_, i) => `$${allParams.length + i + 1}`);
+      valuePlaceholders.push(`(${placeholders.join(", ")})`);
+      allParams.push(...row);
+    }
+
+    // Build SET clause dynamically: "col = EXCLUDED.col" for every column
+    const setClause = BATCH_COLUMNS
+      .filter((col) => col !== "id") // skip PK
+      .map((col) => `${col} = EXCLUDED.${col}`)
+      .join(", ");
+
+    const query = `
+      INSERT INTO snapshot_proposals (${BATCH_COLUMNS.join(", ")})
+      VALUES ${valuePlaceholders.join(", ")}
+      ON CONFLICT (id) DO UPDATE SET ${setClause}
+    `;
+
+    const sql = neon(databaseUrl);
+    await withDatabaseRetry(`upsertProposalsBatch(${batch.length})`, () =>
+      sql.query(query, allParams) as unknown as Promise<unknown>
+    );
+
+    processed += batch.length;
+  }
+
+  return processed;
+}
+
 export async function refreshSpaceProposalCounts(db: SyncDb, spaceIds: string[]): Promise<void> {
   if (spaceIds.length === 0) return;
 
-  const counts = await withDatabaseRetry("refreshSpaceProposalCounts.select", () =>
-    db
-      .select({ spaceId: snapshotProposals.spaceId, proposalCount: count() })
-      .from(snapshotProposals)
-      .where(inArray(snapshotProposals.spaceId, spaceIds))
-      .groupBy(snapshotProposals.spaceId)
+  await withDatabaseRetry("refreshSpaceProposalCounts", () =>
+    db.execute(
+      drizzleSql`
+        update ${snapshotSpaces}
+        set proposal_count = subq.count, updated_at = now()
+        from (
+          select ${snapshotProposals.spaceId} as sid, count(*)::int as count
+          from ${snapshotProposals}
+          where ${snapshotProposals.spaceId} = any(${spaceIds}::text[])
+          group by ${snapshotProposals.spaceId}
+        ) subq
+        where ${snapshotSpaces.id} = subq.sid
+      `
+    )
   );
-
-  const countsBySpaceId = new Map(counts.map((r) => [r.spaceId, r.proposalCount]));
-
-  for (const spaceId of spaceIds) {
-    await withDatabaseRetry(`refreshSpaceProposalCounts.update(${spaceId})`, () =>
-      db
-        .update(snapshotSpaces)
-        .set({ proposalCount: countsBySpaceId.get(spaceId) ?? 0, updatedAt: drizzleSql`now()` })
-        .where(eq(snapshotSpaces.id, spaceId))
-    );
-  }
 }
 
 export async function replaceSpaceMembers(db: SyncDb, spaceId: string, members: string[]): Promise<boolean> {
@@ -453,6 +558,36 @@ export async function refreshPlatformStatsAfterSync(databaseUrl: string): Promis
     console.log("[platform_stats] refreshed");
   } catch (error) {
     console.warn(`[platform_stats] refresh failed: ${stringifyError(error)}`);
+  }
+}
+
+/**
+ * Invalidate Next.js data cache after a sync completes.
+ * Calls the revalidation endpoint to purge cached pages/API responses.
+ */
+export async function revalidateDataCache(tags: string[]): Promise<void> {
+  if (tags.length === 0) return;
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  if (!baseUrl) {
+    console.warn("[revalidate] NEXT_PUBLIC_BASE_URL not set, skipping cache invalidation");
+    return;
+  }
+
+  for (const tag of tags) {
+    try {
+      const response = await fetch(`${baseUrl}/api/revalidate?tag=${encodeURIComponent(tag)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        console.warn(`[revalidate] tag "${tag}" failed: ${response.status} ${response.statusText}`);
+      } else {
+        console.log(`[revalidate] tag "${tag}" revalidated`);
+      }
+    } catch (error) {
+      console.warn(`[revalidate] tag "${tag}" error: ${stringifyError(error)}`);
+    }
   }
 }
 

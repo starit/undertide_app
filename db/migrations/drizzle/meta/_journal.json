@@ -64,6 +64,13 @@
       "when": 1779584234154,
       "tag": "0008_lucky_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1748899200000,
+      "tag": "0009_add_performance_indexes",
+      "breakpoints": true
     }
   ]
 }

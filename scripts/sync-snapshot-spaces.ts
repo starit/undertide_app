@@ -8,6 +8,7 @@ import {
   fetchGraphQL,
   readArgValues,
   refreshPlatformStatsAfterSync,
+  revalidateDataCache,
   runSync,
   stringifyError,
   syncSpaceMembersSafely,
@@ -156,6 +157,7 @@ async function main() {
   const dbAfter = await getDbSpaceCount();
   console.log(`[spaces] DB count after: ${dbAfter} (${dbAfter >= dbBefore ? "+" : ""}${dbAfter - dbBefore})`);
   await refreshPlatformStatsAfterSync(resolvedDatabaseUrl);
+  await revalidateDataCache(["spaces", "snapshot", "translations"]);
   console.log("Spaces sync completed.");
 }
 

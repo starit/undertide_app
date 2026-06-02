@@ -27,6 +27,15 @@ import {
 } from "@/lib/types";
 import { PLATFORM_STATS_ROW_ID } from "@/lib/platform-stats-refresh";
 
+/**
+ * Log a database error with context.
+ */
+function logDbError(context: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error && error.stack ? `\n${error.stack.split('\n').slice(0, 3).join('\n')}` : '';
+  console.error(`[DB:${context}] ${message}${stack}`);
+}
+
 type ProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
@@ -47,7 +56,7 @@ type NormalizedProposalFilters = {
   translatedOnly: boolean;
 };
 
-type SpaceFilters = {
+type NormalizedSpaceFilters = {
   q?: string;
   category?: string;
   verified?: boolean;
@@ -162,7 +171,7 @@ type PlatformStatsRecord = typeof platformStats.$inferSelect;
 type TallyOrganizationRecord = typeof tallyOrganizations.$inferSelect;
 type TallyProposalRecord = typeof tallyProposals.$inferSelect;
 
-export async function listSpaces(query: SpaceFilters = {}): Promise<Space[]> {
+export async function listSpaces(query: NormalizedSpaceFilters = {}): Promise<Space[]> {
   return getCachedSpaces(normalizeSpaceFilters(query));
 }
 
@@ -360,8 +369,10 @@ async function fetchSpaces(query: NormalizedSpaceFilters): Promise<SlimSpaceReco
 
     const limit = query.limit ?? 2000;
 
+    let result: SlimSpaceRecord[];
+
     if (locale) {
-      return await db
+      result = await db
         .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
         .from(snapshotSpaces)
         .leftJoin(
@@ -371,29 +382,23 @@ async function fetchSpaces(query: NormalizedSpaceFilters): Promise<SlimSpaceReco
         .where(and(...conditions))
         .orderBy(...orderBy)
         .limit(limit);
+    } else {
+      result = await db
+        .select(SPACE_SELECT_FIELDS)
+        .from(snapshotSpaces)
+        .where(and(...conditions))
+        .orderBy(...orderBy)
+        .limit(limit);
     }
 
-    return await db
-      .select(SPACE_SELECT_FIELDS)
-      .from(snapshotSpaces)
-      .where(and(...conditions))
-      .orderBy(...orderBy)
-      .limit(limit);
-  } catch {
+    return result;
+  } catch (e) {
+    logDbError("fetchSpaces", e);
     return [];
   }
 }
 
-type NormalizedSpaceFilters = {
-  q?: string;
-  category?: string;
-  verified?: boolean;
-  sort: "activity" | "followers";
-  limit: number;
-  locale?: string;
-};
-
-function normalizeSpaceFilters(query: SpaceFilters = {}): NormalizedSpaceFilters {
+function normalizeSpaceFilters(query: NormalizedSpaceFilters = {}): NormalizedSpaceFilters {
   return {
     q: normalizeOptionalString(query.q),
     category: normalizeOptionalString(query.category),
@@ -451,11 +456,16 @@ async function fetchSpaceBySlug(slug: string, locale?: string): Promise<SlimSpac
       .where(eq(snapshotSpaces.id, slug))
       .limit(1);
     return match ?? null;
-  } catch {
+  } catch (e) {
+    logDbError("fetchSpaceBySlug", e);
     return null;
   }
 }
 
+/**
+ * In-memory cache for fetchProposals: 64 entries, 60s TTL.
+ * Complements unstable_cache on API routes.
+ */
 async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimProposalRecord[]> {
   if (!hasDatabase) return [];
 
@@ -595,12 +605,16 @@ async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimPro
     const orderedQuery = baseQuery.orderBy(desc(snapshotProposals.createdAt));
 
     const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
+    let result: SlimProposalRecord[];
     if (limit) {
-      return await orderedQuery.limit(limit);
+      result = await orderedQuery.limit(limit);
+    } else {
+      result = await orderedQuery;
     }
 
-    return await orderedQuery;
-  } catch {
+    return result;
+  } catch (e) {
+    logDbError("fetchProposals", e);
     return [];
   }
 }
@@ -656,14 +670,12 @@ async function fetchSearchedProposals(query: NormalizedProposalFilters): Promise
         select p.id
         from snapshot_proposals p
         where ${titleMatchConditions.join(" and ")}
-        order by p.created_at desc nulls last
         limit ${candidateLimitParam}
       ),
       space_proposal_matches as (
         select p.id
         from snapshot_proposals p
         where ${spaceProposalConditions.join(" and ")}
-        order by p.created_at desc nulls last
         limit ${candidateLimitParam}
       ),
       candidate_ids as (
@@ -806,7 +818,8 @@ async function fetchProposalById(id: string, locale?: string): Promise<ProposalR
             .where(eq(snapshotProposals.id, id))
             .limit(1);
     return record ?? null;
-  } catch {
+  } catch (e) {
+    logDbError("fetchProposalById", e);
     return null;
   }
 }
@@ -831,7 +844,7 @@ async function fetchProposalTranslations(
       .from(proposalTranslations)
       .where(condition)
       .orderBy(proposalTranslations.locale);
-  } catch {
+  } catch (e) {
     return [];
   }
 }
@@ -868,7 +881,7 @@ async function fetchSnapshotSyncStates(entityTypes?: string[]): Promise<Snapshot
       ...state,
       latestRun: latestRuns.get(state.entityType) ?? null,
     }));
-  } catch {
+  } catch (e) {
     return [];
   }
 }
@@ -896,7 +909,7 @@ async function fetchTallyOrganizations(query: TallyOrganizationFilters = {}): Pr
         : baseQuery.orderBy(desc(tallyOrganizations.hasActiveProposals), desc(tallyOrganizations.proposalsCount), tallyOrganizations.name);
 
     return await ordered.limit(normalizeLimit(query.limit, 100));
-  } catch {
+  } catch (e) {
     return [];
   }
 }
@@ -913,7 +926,7 @@ async function fetchTallyOrganization(idOrSlug: string): Promise<TallyOrganizati
       .limit(1);
 
     return record ?? null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -960,7 +973,7 @@ async function fetchTallyProposals(query: TallyProposalFilters = {}): Promise<Ta
         : baseQuery.orderBy(desc(tallyProposals.sourceCreatedAt), desc(tallyProposals.syncedAt));
 
     return await ordered.limit(normalizeLimit(query.limit, 100));
-  } catch {
+  } catch (e) {
     return [];
   }
 }
@@ -977,7 +990,7 @@ async function fetchTallyProposal(id: string): Promise<TallyProposalRecord | nul
       .limit(1);
 
     return record ?? null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -999,7 +1012,7 @@ async function fetchPlatformStats(): Promise<PlatformStats> {
     if (record) {
       return mapPlatformStats(record);
     }
-  } catch {
+  } catch (e) {
     // Fall through to live counts for deployments that have not run the stats migration yet.
   }
 
@@ -1068,7 +1081,7 @@ async function fetchPlatformStats(): Promise<PlatformStats> {
       lastSuccessfulSpaceSyncAt: syncStateMap.get("spaces") ?? null,
       lastSuccessfulProposalSyncAt: syncStateMap.get("proposals") ?? null,
     };
-  } catch {
+  } catch (e) {
     return emptyPlatformStats();
   }
 }
@@ -1380,7 +1393,7 @@ function getTallyProposalUrl(organizationSlug: string | null, proposalId: string
 }
 
 
-function applySpaceFilters(items: Space[], query: SpaceFilters) {
+function applySpaceFilters(items: Space[], query: NormalizedSpaceFilters) {
   // verified, q, and category are all filtered in SQL; only activityScore sort needs in-memory work
   const filtered = items.filter((space) => {
     const matchesCategory = query.category && query.category !== "All" ? space.categories.includes(query.category) : true;

@@ -130,6 +130,7 @@ export const snapshotProposals = pgTable(
     endAtIdx: index("idx_snapshot_proposals_end_at").on(table.endAt),
     authorIdx: index("idx_snapshot_proposals_author").on(table.author),
     titleTrgmIdx: index("idx_snapshot_proposals_title_trgm").using("gin", table.title.op("gin_trgm_ops")),
+    createdTsIdx: index("idx_snapshot_proposals_created_ts").on(table.createdTs.desc()),
     feedIdx: index("idx_snapshot_proposals_feed")
       .on(table.createdAt.desc())
       .where(sql`${table.flagged} = false`),
@@ -220,6 +221,10 @@ export const snapshotSyncRuns = pgTable(
   (table) => ({
     entityTypeIdx: index("idx_snapshot_sync_runs_entity_type").on(table.entityType),
     createdAtIdx: index("idx_snapshot_sync_runs_created_at").on(table.createdAt),
+    latestPerEntityTypeIdx: index("idx_snapshot_sync_runs_latest").on(
+      table.entityType,
+      table.createdAt.desc()
+    ),
   })
 );
 

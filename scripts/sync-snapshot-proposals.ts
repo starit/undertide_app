@@ -37,9 +37,10 @@ import {
   readNumberArg,
   refreshPlatformStatsAfterSync,
   refreshSpaceProposalCounts,
+  revalidateDataCache,
   runSync,
   safelyUpsertSyncState,
-  upsertProposal,
+  upsertProposalsBatch,
   type SnapshotProposal,
 } from "./sync-snapshot-shared";
 
@@ -79,6 +80,7 @@ async function syncNewProposals(lastCreatedTs: number): Promise<{
   let highestCreatedTs = lastCreatedTs;
   const touchedSpaceIds = new Set<string>();
   let beforeCreated: number | null = null;
+  const batch: SnapshotProposal[] = [];
 
   while (true) {
     const where: Record<string, unknown> = { created_gt: lastCreatedTs };
@@ -91,19 +93,29 @@ async function syncNewProposals(lastCreatedTs: number): Promise<{
     for (const proposal of proposals) {
       if (!proposal?.space?.id) continue;
       highestCreatedTs = Math.max(highestCreatedTs, Number(proposal.created ?? 0));
-      await upsertProposal(db, proposal);
+      batch.push(proposal);
       touchedSpaceIds.add(proposal.space.id);
-      upserted += 1;
     }
 
     const oldestInBatch = Math.min(...proposals.map((p) => Number(p.created ?? 0)));
     beforeCreated = Number.isFinite(oldestInBatch) && oldestInBatch > 0 ? oldestInBatch : null;
 
+    // Flush accumulated batch
+    const flushed = await upsertProposalsBatch(resolvedDatabaseUrl, batch);
+    batch.length = 0;
+    upserted += flushed;
+
     console.log(
-      `[proposals:new] page ${page}: ${proposals.length} proposals (cumulative ${upserted}),` +
+      `[proposals:new] page ${page}: ${flushed} proposals upserted (cumulative ${upserted}),` +
       ` oldest created=${oldestInBatch ? new Date(oldestInBatch * 1000).toISOString() : "unknown"}`
     );
     if (proposals.length < PROPOSAL_PAGE_SIZE || !beforeCreated) break;
+  }
+
+  // Flush any remaining
+  if (batch.length > 0) {
+    upserted += await upsertProposalsBatch(resolvedDatabaseUrl, batch);
+    batch.length = 0;
   }
 
   return { upserted, highestCreatedTs, touchedSpaceIds };
@@ -115,6 +127,7 @@ async function syncActiveProposals(): Promise<{ upserted: number; touchedSpaceId
   let page = 0;
   const touchedSpaceIds = new Set<string>();
   let beforeCreated: number | null = null;
+  const batch: SnapshotProposal[] = [];
 
   console.log("[proposals:active] refreshing all currently-active proposals (no watermark)");
 
@@ -128,16 +141,24 @@ async function syncActiveProposals(): Promise<{ upserted: number; touchedSpaceId
     page += 1;
     for (const proposal of proposals) {
       if (!proposal?.space?.id) continue;
-      await upsertProposal(db, proposal);
+      batch.push(proposal);
       touchedSpaceIds.add(proposal.space.id);
-      upserted += 1;
     }
 
     const oldestInBatch = Math.min(...proposals.map((p) => Number(p.created ?? 0)));
     beforeCreated = Number.isFinite(oldestInBatch) && oldestInBatch > 0 ? oldestInBatch : null;
 
-    console.log(`[proposals:active] page ${page}: ${proposals.length} proposals refreshed (cumulative ${upserted})`);
+    const flushed = await upsertProposalsBatch(resolvedDatabaseUrl, batch);
+    batch.length = 0;
+    upserted += flushed;
+
+    console.log(`[proposals:active] page ${page}: ${flushed} proposals refreshed (cumulative ${upserted})`);
     if (proposals.length < PROPOSAL_PAGE_SIZE || !beforeCreated) break;
+  }
+
+  if (batch.length > 0) {
+    upserted += await upsertProposalsBatch(resolvedDatabaseUrl, batch);
+    batch.length = 0;
   }
 
   return { upserted, touchedSpaceIds };
@@ -151,6 +172,7 @@ async function syncRecentlyClosedProposals(): Promise<{ upserted: number; touche
   let page = 0;
   const touchedSpaceIds = new Set<string>();
   let beforeCreated: number | null = null;
+  const batch: SnapshotProposal[] = [];
 
   console.log(`[proposals:recent-closed] refreshing proposals that ended in the last 48 h (since ${new Date(twoDaysAgo * 1000).toISOString()})`);
 
@@ -164,16 +186,24 @@ async function syncRecentlyClosedProposals(): Promise<{ upserted: number; touche
     page += 1;
     for (const proposal of proposals) {
       if (!proposal?.space?.id) continue;
-      await upsertProposal(db, proposal);
+      batch.push(proposal);
       touchedSpaceIds.add(proposal.space.id);
-      upserted += 1;
     }
 
     const oldestInBatch = Math.min(...proposals.map((p) => Number(p.created ?? 0)));
     beforeCreated = Number.isFinite(oldestInBatch) && oldestInBatch > 0 ? oldestInBatch : null;
 
-    console.log(`[proposals:recent-closed] page ${page}: ${proposals.length} proposals refreshed (cumulative ${upserted})`);
+    const flushed = await upsertProposalsBatch(resolvedDatabaseUrl, batch);
+    batch.length = 0;
+    upserted += flushed;
+
+    console.log(`[proposals:recent-closed] page ${page}: ${flushed} proposals refreshed (cumulative ${upserted})`);
     if (proposals.length < PROPOSAL_PAGE_SIZE || !beforeCreated) break;
+  }
+
+  if (batch.length > 0) {
+    upserted += await upsertProposalsBatch(resolvedDatabaseUrl, batch);
+    batch.length = 0;
   }
 
   return { upserted, touchedSpaceIds };
@@ -308,6 +338,7 @@ async function main() {
   console.log("Starting proposals incremental sync...");
   await runSync(db, "proposals", syncProposals);
   await refreshPlatformStatsAfterSync(resolvedDatabaseUrl);
+  await revalidateDataCache(["proposals", "snapshot"]);
   console.log("Proposals incremental sync completed.");
 }
 
