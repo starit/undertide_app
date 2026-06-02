@@ -28,6 +28,7 @@ export function ProposalsBrowser({
   const view = useAppSelector((state) => state.ui.proposalView);
   const locale = useLocale();
   const tProposals = useTranslations("proposals");
+  const tSearch = useTranslations("search");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("All");
   const [sort, setSort] = useState<(typeof sortOptions)[number]>("Time");
@@ -202,9 +203,17 @@ export function ProposalsBrowser({
       </div>
 
       <div className={view === "grid" ? "grid gap-4 md:gap-6 lg:grid-cols-2" : "grid gap-4 md:gap-6"}>
-        {results.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} />
-        ))}
+        {results.length === 0 ? (
+          <div className="col-span-full flex flex-col items-center gap-3 border border-border bg-card p-10 text-center">
+            <Search className="size-8 text-muted-foreground/50" />
+            <p className="text-sm font-medium text-foreground">{tProposals("searching")}</p>
+            <p className="text-xs text-muted-foreground">{tSearch("noResultsHint")}</p>
+          </div>
+        ) : (
+          results.map((proposal) => (
+            <ProposalCard key={proposal.id} proposal={proposal} compact={view === "list"} />
+          ))
+        )}
       </div>
 
       {results.length >= limit ? (

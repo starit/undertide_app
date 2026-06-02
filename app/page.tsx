@@ -3,6 +3,8 @@ import { getPlatformStats, listProposals, listSpaces } from "@/lib/repository";
 import { getServerLocale } from "@/lib/i18n-server";
 import { Hero } from "@/components/hero";
 import {
+  ActivityAtAGlance,
+  CategoryBreakdownSection,
   FeaturedProposalSection,
   FeaturedSpacesSection,
   MethodologySection,
@@ -28,16 +30,18 @@ export default async function HomePage() {
   const locale = await getServerLocale();
   const [stats, proposals, spaces] = await Promise.all([
     getPlatformStats(),
-    listProposals({ sort: "time", limit: 2, locale }),
-    listSpaces({ sort: "activity", limit: 3 }),
+    listProposals({ sort: "time", limit: 6, locale }),
+    listSpaces({ sort: "activity", limit: 6 }),
   ]);
 
   return (
     <>
       <Hero stats={stats} />
       <QuickEntrySection />
+      <ActivityAtAGlance stats={stats} />
       <FeaturedProposalSection proposals={proposals} />
       <FeaturedSpacesSection spaces={spaces} />
+      <CategoryBreakdownSection stats={stats} />
       <MethodologySection />
     </>
   );

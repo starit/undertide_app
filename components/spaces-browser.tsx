@@ -36,6 +36,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
   const dispatch = useAppDispatch();
   const view = useAppSelector((state) => state.ui.spaceView);
   const tSpaces = useTranslations("spaces");
+  const tSearch = useTranslations("search");
   const locale = useLocale();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryValue>("All");
@@ -197,9 +198,17 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
       </div>
 
       <div className={view === "grid" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
-        {results.map((space) => (
-          <SpaceCard key={space.slug} space={space} />
-        ))}
+        {results.length === 0 ? (
+          <div className="col-span-full flex flex-col items-center gap-3 border border-border bg-card p-10 text-center">
+            <Search className="size-8 text-muted-foreground/50" />
+            <p className="text-sm font-medium text-foreground">{tSpaces("searching")}</p>
+            <p className="text-xs text-muted-foreground">{tSearch("noResultsHint")}</p>
+          </div>
+        ) : (
+          results.map((space) => (
+            <SpaceCard key={space.slug} space={space} />
+          ))
+        )}
       </div>
     </div>
   );

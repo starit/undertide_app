@@ -98,6 +98,12 @@ const dictionaries = {
         "UnderTide helps AI deliver more accurate governance intelligence by building a stronger context framework for governance information.",
       methodologyDescriptionTwo:
         "UnderTide uses AI to enable more diverse forms of governance information expression, helping it reach a broader audience.",
+      emptyProposals: "No proposals to feature yet.",
+      emptySpaces: "No spaces to feature yet.",
+      activityAtAGlance: "Activity at a Glance",
+      activityDescription: "Real-time platform snapshot across protocols.",
+      categoriesEyebrow: "Categories",
+      categoriesTitle: "Governance landscape by category.",
     },
     spaces: {
       eyebrow: "Spaces",
@@ -197,6 +203,10 @@ const dictionaries = {
       spaceResultsTitle: "Governance space matches",
       spaceResultsDescription: "Search also spans verified protocol governance spaces and their category metadata.",
       loadMore: "Load More",
+      noResults: "No results found for your query.",
+      noResultsHint: "Try a different search term or adjust your filters.",
+      emptyProposalsTitle: "No matching proposals",
+      emptySpacesTitle: "No matching spaces",
     },
     about: {
       eyebrow: "About",
@@ -293,6 +303,12 @@ const dictionaries = {
       methodologyTitle: "我们的价值",
       methodologyDescriptionOne: "UnderTide 通过建立更完善的治理信息 Context 体系，帮助 AI 提供更加准确的治理情报。",
       methodologyDescriptionTwo: "UnderTide 使用 AI 帮助治理信息实现更多样化的表达，触及更广泛的受众。",
+      emptyProposals: "暂无精选提案。",
+      emptySpaces: "暂无精选空间。",
+      activityAtAGlance: "平台概览",
+      activityDescription: "跨协议的实时平台快照。",
+      categoriesEyebrow: "分类",
+      categoriesTitle: "按分类浏览治理生态。",
     },
     spaces: {
       eyebrow: "空间",
@@ -390,6 +406,10 @@ const dictionaries = {
       spaceResultsTitle: "治理空间的搜索结果",
       spaceResultsDescription: "搜索也覆盖已验证协议治理空间及其分类元数据。",
       loadMore: "加载更多",
+      noResults: "未找到与搜索条件匹配的结果。",
+      noResultsHint: "尝试更换搜索关键词或调整过滤条件。",
+      emptyProposalsTitle: "暂无匹配的提案",
+      emptySpacesTitle: "暂无匹配的空间",
     },
     about: {
       eyebrow: "关于",
@@ -484,6 +504,12 @@ const dictionaries = {
         "UnderTide は、ガバナンス情報のコンテキスト基盤を強化することで、AI がより正確なガバナンスインテリジェンスを提供できるよう支援します。",
       methodologyDescriptionTwo:
         "UnderTide は AI を活用し、ガバナンス情報の表現をより多様化して、より広いオーディエンスに届けます。",
+      emptyProposals: "注目の提案はまだありません。",
+      emptySpaces: "注目のスペースはまだありません。",
+      activityAtAGlance: "プラットフォーム概要",
+      activityDescription: "プロトコル横断のリアルタイムプラットフォームスナップショット。",
+      categoriesEyebrow: "カテゴリ",
+      categoriesTitle: "カテゴリ別にガバナンスの状況を確認。",
     },
     spaces: {
       eyebrow: "スペース",
@@ -581,6 +607,10 @@ const dictionaries = {
       spaceResultsTitle: "一致したガバナンススペース",
       spaceResultsDescription: "検証済みガバナンススペースとカテゴリ情報も検索対象です。",
       loadMore: "さらに表示",
+      noResults: "検索条件に一致する結果が見つかりませんでした。",
+      noResultsHint: "別のキーワードで試すか、フィルターを調整してください。",
+      emptyProposalsTitle: "一致する提案はありません",
+      emptySpacesTitle: "一致するスペースはありません",
     },
     about: {
       eyebrow: "概要",
@@ -678,6 +708,12 @@ const dictionaries = {
         "UnderTide는 거버넌스 정보의 컨텍스트 체계를 강화해, AI가 더 정확한 거버넌스 인텔리전스를 제공하도록 돕습니다.",
       methodologyDescriptionTwo:
         "UnderTide는 AI를 활용해 거버넌스 정보의 표현을 더욱 다양화하고, 더 넓은 사용자에게 도달하도록 합니다.",
+      emptyProposals: "아직 주목할 제안이 없습니다.",
+      emptySpaces: "아직 주목할 스페이스가 없습니다.",
+      activityAtAGlance: "플랫폼 개요",
+      activityDescription: "프로토콜 전반의 실시간 플랫폼 스냅샷.",
+      categoriesEyebrow: "카테고리",
+      categoriesTitle: "카테고리별 거버넌스 생태계 둘러보기.",
     },
     spaces: {
       eyebrow: "스페이스",
@@ -775,6 +811,10 @@ const dictionaries = {
       spaceResultsTitle: "일치하는 거버넌스 스페이스",
       spaceResultsDescription: "검증된 프로토콜 거버넌스 스페이스와 카테고리 메타데이터도 검색됩니다.",
       loadMore: "더 보기",
+      noResults: "검색 조건과 일치하는 결과가 없습니다.",
+      noResultsHint: "다른 검색어를 시도하거나 필터를 조정해보세요.",
+      emptyProposalsTitle: "일치하는 제안이 없습니다",
+      emptySpacesTitle: "일치하는 스페이스가 없습니다",
     },
     about: {
       eyebrow: "소개",

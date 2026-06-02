@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { Search } from "lucide-react";
 import { Proposal, Space } from "@/lib/types";
 import { ProposalCard } from "@/components/proposal-card";
 import { SectionHeading } from "@/components/section-heading";
@@ -151,9 +152,17 @@ export function SearchResults({
           description={tSearch("proposalResultsDescription")}
         />
         <div className="grid gap-6 lg:grid-cols-2">
-          {results.proposals.map((proposal) => (
-            <ProposalCard key={proposal.id} proposal={proposal} compact />
-          ))}
+          {results.proposals.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center gap-3 border border-border bg-card p-10 text-center">
+              <Search className="size-8 text-muted-foreground/50" />
+              <p className="text-sm font-medium text-foreground">{tSearch("noResults")}</p>
+              <p className="text-xs text-muted-foreground">{tSearch("noResultsHint")}</p>
+            </div>
+          ) : (
+            results.proposals.map((proposal) => (
+              <ProposalCard key={proposal.id} proposal={proposal} compact />
+            ))
+          )}
         </div>
       </section>
 
@@ -164,9 +173,17 @@ export function SearchResults({
           description={tSearch("spaceResultsDescription")}
         />
         <div className="grid gap-6 lg:grid-cols-2">
-          {results.spaces.map((space) => (
-            <SpaceCard key={space.slug} space={space} />
-          ))}
+          {results.spaces.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center gap-3 border border-border bg-card p-10 text-center">
+              <Search className="size-8 text-muted-foreground/50" />
+              <p className="text-sm font-medium text-foreground">{tSearch("noResults")}</p>
+              <p className="text-xs text-muted-foreground">{tSearch("noResultsHint")}</p>
+            </div>
+          ) : (
+            results.spaces.map((space) => (
+              <SpaceCard key={space.slug} space={space} />
+            ))
+          )}
         </div>
       </section>
 

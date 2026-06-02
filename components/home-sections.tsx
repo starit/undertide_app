@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { ArrowRight, ChevronRight } from "lucide-react";
-import { Proposal, Space } from "@/lib/types";
+import { ArrowRight, ChevronRight, Compass, Search } from "lucide-react";
+import { PlatformStats, Proposal, Space } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProposalCard } from "@/components/proposal-card";
@@ -46,20 +46,32 @@ export async function QuickEntrySection() {
   );
 }
 
-export async function FeaturedProposalSection({ proposals }: { proposals: Proposal[] }) {
+export async function ActivityAtAGlance({ stats }: { stats: PlatformStats }) {
   const tHome = await getTranslations("home");
-  const featured = proposals.slice(0, 2);
+  const tProposals = await getTranslations("proposals");
+  const tSpaces = await getTranslations("spaces");
+
   return (
-    <section className="border-y border-border bg-card/60">
+    <section className="border-y border-border">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
         <SectionHeading
-          eyebrow={tHome("featuredProposalsEyebrow")}
-          title={tHome("featuredProposalsTitle")}
-          description={tHome("featuredProposalsDescription")}
+          eyebrow={tHome("activityAtAGlance")}
+          title={tHome("activityDescription")}
+          description=""
         />
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          {featured.map((proposal) => (
-            <ProposalCard key={proposal.id} proposal={proposal} compact />
+        <div className="mt-6 grid gap-px border border-border bg-border sm:grid-cols-4">
+          {[
+            { label: tSpaces("supportedSpaces", { count: stats.spacesCount }), value: stats.spacesCount.toLocaleString() },
+            { label: tProposals("supportedProposals", { count: stats.proposalsCount }), value: stats.proposalsCount.toLocaleString() },
+            { label: tHome("activeProposals"), value: stats.activeProposalsCount.toLocaleString() },
+            { label: tSpaces("verifiedStatus"), value: stats.verifiedSpacesCount.toLocaleString() },
+          ].map((stat) => (
+            <div key={stat.label} className="bg-background px-4 py-4">
+              <p className="text-2xl font-bold">{stat.value}</p>
+              <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                {stat.label}
+              </p>
+            </div>
           ))}
         </div>
       </div>
@@ -67,25 +79,36 @@ export async function FeaturedProposalSection({ proposals }: { proposals: Propos
   );
 }
 
-export function ProposalBrowseSection({ proposals }: { proposals: Proposal[] }) {
+export async function FeaturedProposalSection({ proposals }: { proposals: Proposal[] }) {
+  const tHome = await getTranslations("home");
+  const featured = proposals.slice(0, 6);
+
   return (
-    <section className="mx-auto max-w-7xl px-4 py-16 md:px-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <section className="bg-card/60">
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
         <SectionHeading
-          eyebrow="More Coverage"
-          title="Continue scanning the proposal stream."
-          description="Beyond the featured layer, UnderTide keeps routine, strategic, and governance-process proposals discoverable."
+          eyebrow={tHome("featuredProposalsEyebrow")}
+          title={tHome("featuredProposalsTitle")}
+          description={tHome("featuredProposalsDescription")}
         />
-        <Button variant="outline" asChild>
-          <Link href="/proposals" className="inline-flex items-center gap-2">
-            All Proposals <ArrowRight className="size-4" />
-          </Link>
-        </Button>
-      </div>
-      <div className="mt-8 grid gap-6 md:mt-10 md:grid-cols-2">
-        {proposals.slice(3).map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} compact />
-        ))}
+        {featured.length === 0 ? (
+          <EmptySectionCard message={tHome("emptyProposals")} />
+        ) : (
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {featured.map((proposal) => (
+              <ProposalCard key={proposal.id} proposal={proposal} compact />
+            ))}
+          </div>
+        )}
+        {featured.length > 0 && (
+          <div className="mt-6">
+            <Button variant="outline" asChild>
+              <Link href="/proposals" className="inline-flex items-center gap-2">
+                {tHome("browseProposals")} <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -93,6 +116,8 @@ export function ProposalBrowseSection({ proposals }: { proposals: Proposal[] }) 
 
 export async function FeaturedSpacesSection({ spaces }: { spaces: Space[] }) {
   const tHome = await getTranslations("home");
+  const featured = spaces.slice(0, 6);
+
   return (
     <section className="border-y border-border bg-card/60">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
@@ -106,9 +131,89 @@ export async function FeaturedSpacesSection({ spaces }: { spaces: Space[] }) {
             <Link href="/spaces">{tHome("allSpaces")}</Link>
           </Button>
         </div>
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          {spaces.slice(0, 3).map((space) => (
-            <SpaceCard key={space.slug} space={space} />
+        {featured.length === 0 ? (
+          <EmptySectionCard message={tHome("emptySpaces")} />
+        ) : (
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {featured.map((space) => (
+              <SpaceCard key={space.slug} space={space} />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export async function CategoryBreakdownSection({ stats }: { stats: PlatformStats }) {
+  const tHome = await getTranslations("home");
+
+  return (
+    <section className="border-b border-border">
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <SectionHeading
+            eyebrow={tHome("categoriesEyebrow")}
+            title={tHome("categoriesTitle")}
+            description=""
+          />
+          <Button variant="outline" asChild>
+            <Link href="/spaces" className="inline-flex items-center gap-2">
+              <Compass className="size-4" /> {tHome("exploreSpaces")}
+            </Link>
+          </Button>
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {[
+            {
+              title: "Protocol",
+              description: "Core protocol governance",
+              href: "/spaces?category=protocol",
+            },
+            {
+              title: "DeFi",
+              description: "Lending, DEX, yield protocols",
+              href: "/spaces?category=defi",
+            },
+            {
+              title: "Gaming",
+              description: "Web3 gaming & metaverse",
+              href: "/spaces?category=gaming",
+            },
+            {
+              title: "Service",
+              description: "Infrastructure & middleware",
+              href: "/spaces?category=service",
+            },
+            {
+              title: "Social",
+              description: "Social & community DAOs",
+              href: "/spaces?category=social",
+            },
+            {
+              title: "DeFAI",
+              description: "AI x DeFi protocols",
+              href: "/spaces?category=defai",
+            },
+            {
+              title: "Grant",
+              description: "Ecosystem funding DAOs",
+              href: "/spaces?category=grant",
+            },
+            {
+              title: "RWA",
+              description: "Real-world assets",
+              href: "/spaces?category=rwa",
+            },
+          ].map((category) => (
+            <Link key={category.title} href={category.href}>
+              <Card className="h-full transition-colors hover:border-foreground/30">
+                <CardHeader className="p-4">
+                  <CardTitle className="text-base">{category.title}</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">{category.description}</p>
+                </CardHeader>
+              </Card>
+            </Link>
           ))}
         </div>
       </div>
@@ -131,5 +236,14 @@ export async function MethodologySection() {
         </div>
       </div>
     </section>
+  );
+}
+
+function EmptySectionCard({ message }: { message: string }) {
+  return (
+    <div className="mt-6 flex flex-col items-center gap-3 border border-border bg-card p-10 text-center">
+      <Search className="size-8 text-muted-foreground/50" />
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
   );
 }
