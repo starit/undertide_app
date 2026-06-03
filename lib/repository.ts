@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
-import { SQL, and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
+import { SQL, and, asc, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
   proposalTranslations,
   spaceTranslations,
@@ -39,7 +39,7 @@ function logDbError(context: string, error: unknown): void {
 type ProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
-  sort?: "time";
+  sort?: "time" | "expiring";
   spaceSlug?: string;
   limit?: number;
   locale?: string;
@@ -49,7 +49,7 @@ type ProposalFilters = {
 type NormalizedProposalFilters = {
   q?: string;
   status?: ProposalStatus | "All";
-  sort: "time";
+  sort: "time" | "expiring";
   spaceSlug?: string;
   limit?: number;
   locale?: string;
@@ -602,7 +602,9 @@ async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimPro
             .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
             .where(and(...conditions));
 
-    const orderedQuery = baseQuery.orderBy(desc(snapshotProposals.createdAt));
+    const orderedQuery = query.sort === "expiring"
+      ? baseQuery.orderBy(asc(snapshotProposals.endTs))
+      : baseQuery.orderBy(desc(snapshotProposals.createdAt));
 
     const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
     let result: SlimProposalRecord[];
@@ -1160,6 +1162,7 @@ function mapProposal(
     status: mapProposalStatus(proposal.state),
     publishedAt: fromUnixSeconds(proposal.createdTs),
     closesAt: fromUnixSeconds(proposal.endTs),
+    endTs: proposal.endTs != null ? Number(proposal.endTs) : null,
     votesCount: proposal.votesCount,
     type: proposal.type ?? null,
     labels: parseStringArray(proposal.labels),

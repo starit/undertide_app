@@ -5,6 +5,7 @@ import { Hero } from "@/components/hero";
 import {
   ActivityAtAGlance,
   CategoryBreakdownSection,
+  ExpiringProposalsSection,
   FeaturedProposalSection,
   FeaturedSpacesSection,
   MethodologySection,
@@ -28,9 +29,10 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const locale = await getServerLocale();
-  const [stats, proposals, spaces] = await Promise.all([
+  const [stats, proposals, expiringProposals, spaces] = await Promise.all([
     getPlatformStats(),
     listProposals({ sort: "time", limit: 6, locale }),
+    listProposals({ sort: "expiring", limit: 4, locale }),
     listSpaces({ sort: "activity", limit: 6 }),
   ]);
 
@@ -39,6 +41,7 @@ export default async function HomePage() {
       <Hero stats={stats} />
       <QuickEntrySection />
       <ActivityAtAGlance stats={stats} />
+      <ExpiringProposalsSection proposals={expiringProposals} />
       <FeaturedProposalSection proposals={proposals} />
       <FeaturedSpacesSection spaces={spaces} />
       <CategoryBreakdownSection stats={stats} />

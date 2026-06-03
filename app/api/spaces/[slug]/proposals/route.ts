@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listSpaceProposals } from "@/lib/repository";
+import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
 
 export const runtime = "nodejs";
+
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
 
 const DEFAULT_PROPOSAL_LIMIT = 24;
 const PROPOSAL_API_S_MAXAGE_SECONDS = 60;
@@ -18,7 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     locale: searchParams.get("locale") ?? undefined,
   });
 
-  return NextResponse.json(
+  return corsJsonResponse(
     { data: proposals },
     {
       headers: {

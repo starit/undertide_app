@@ -125,6 +125,7 @@ export const proposals: Proposal[] = [
     summary: "Seeks additional budget allocation to fund independent audits for bridge-related incentive flows and emergency controls.",
     body: null,
     discussionUrl: "https://forum.arbitrum.foundation/t/stip-bridge-audit/123",
+    endTs: null,
     proposalUrl: "https://snapshot.box"
   },
   {
@@ -149,6 +150,7 @@ export const proposals: Proposal[] = [
     summary: "Revises liquidation thresholds and borrow caps for liquid staking token corridors to reflect current volatility and liquidity depth.",
     body: null,
     discussionUrl: "https://governance.aave.com/t/emode-refresh/456",
+    endTs: null,
     proposalUrl: "https://snapshot.box"
   },
   {
@@ -173,6 +175,7 @@ export const proposals: Proposal[] = [
     summary: "Defines principles and review cadence for how ENS delegates participate in cross-protocol public goods coordination.",
     body: null,
     discussionUrl: "https://discuss.ens.domains/t/metagov-charter/789",
+    endTs: null,
     proposalUrl: "https://snapshot.box"
   },
   {
@@ -197,6 +200,7 @@ export const proposals: Proposal[] = [
     summary: "Approves a framework for evaluating and sequencing Uniswap deployments across emerging rollup ecosystems.",
     body: null,
     discussionUrl: "https://gov.uniswap.org/t/northstar-framework/321",
+    endTs: null,
     proposalUrl: "https://snapshot.box"
   },
   {
@@ -221,6 +225,7 @@ export const proposals: Proposal[] = [
     summary: "Creates a structured public registry for delegate affiliations and compensation disclosures.",
     body: null,
     discussionUrl: "https://forum.arbitrum.foundation/t/delegate-attestation/654",
+    endTs: null,
     proposalUrl: "https://snapshot.box"
   },
   {
@@ -245,6 +250,7 @@ export const proposals: Proposal[] = [
     summary: "Requests an external review of the planned Safety Module migration, focusing on slashing assumptions and liquidity coordination.",
     body: null,
     discussionUrl: "https://governance.aave.com/t/safety-module-review/987",
+    endTs: null,
     proposalUrl: "https://snapshot.box"
   }
 ];

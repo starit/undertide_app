@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
+import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
 import { GOVERNANCE_SOURCES } from "@/lib/governance/sources";
 import { listSnapshotSyncStates, listTallySyncStates } from "@/lib/repository";
 
 export const runtime = "nodejs";
+
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
 
 export async function GET() {
   const [snapshotStates, tallyStates] = await Promise.all([
@@ -10,7 +15,7 @@ export async function GET() {
     listTallySyncStates([GOVERNANCE_SOURCES.tally.spaceEntityType, GOVERNANCE_SOURCES.tally.proposalEntityType]),
   ]);
 
-  return NextResponse.json({
+  return corsJsonResponse({
     data: [
       {
         source: "snapshot",

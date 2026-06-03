@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { ArrowRight, ChevronRight, Compass, Search } from "lucide-react";
+import { ArrowRight, ChevronRight, Clock, Compass, Search } from "lucide-react";
 import { PlatformStats, Proposal, Space } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -234,6 +234,71 @@ export async function MethodologySection() {
           <p>{tHome("methodologyDescriptionOne")}</p>
           <p>{tHome("methodologyDescriptionTwo")}</p>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function formatTimeLeft(endTs: number): string {
+  const now = Date.now() / 1000;
+  const diff = endTs - now;
+  if (diff <= 0) return "Ended";
+  const days = Math.floor(diff / 86400);
+  const hours = Math.floor((diff % 86400) / 3600);
+  if (days > 0) return `${days}d ${hours}h left`;
+  return `${hours}h left`;
+}
+
+export async function ExpiringProposalsSection({ proposals }: { proposals: Proposal[] }) {
+  const tHome = await getTranslations("home");
+  const now = Date.now() / 1000;
+  const active = proposals.filter((p) => p.endTs && p.endTs > now && p.status === "Active").slice(0, 4);
+
+  return (
+    <section className="border-b border-border bg-amber-50/30 dark:bg-amber-950/10">
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
+        <SectionHeading
+          eyebrow={tHome("expiringEyebrow")}
+          title={tHome("expiringTitle")}
+          description=""
+        />
+        {active.length === 0 ? (
+          <EmptySectionCard message={tHome("expiringEmpty")} />
+        ) : (
+          <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {active.map((proposal) => (
+              <Link key={proposal.id} href={`/proposals/${proposal.id}`}>
+                <Card className="h-full transition-colors hover:border-amber-500/50 hover:shadow-sm">
+                  <CardHeader className="p-3 pb-1 md:p-4 md:pb-2">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                      <Clock className="size-3.5" />
+                      <span>{proposal.endTs ? formatTimeLeft(proposal.endTs) : "—"}</span>
+                    </div>
+                    <CardTitle className="mt-1 line-clamp-2 text-sm font-medium leading-snug md:text-base">
+                      {proposal.title}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0 md:p-4 md:pt-0">
+                    {proposal.protocol && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {proposal.protocol}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+        {active.length > 0 && (
+          <div className="mt-6">
+            <Button variant="outline" asChild>
+              <Link href="/proposals?status=active&sort=expiring" className="inline-flex items-center gap-2">
+                {tHome("browseProposals")} <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

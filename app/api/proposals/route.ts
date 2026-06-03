@@ -3,6 +3,12 @@ import { listProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
+
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
+
 const DEFAULT_PROPOSAL_LIMIT = 24;
 const PROPOSAL_API_S_MAXAGE_SECONDS = 60;
 const PROPOSAL_API_STALE_WHILE_REVALIDATE_SECONDS = 180;
@@ -19,7 +25,7 @@ export async function GET(request: NextRequest) {
     translatedOnly: searchParams.get("translatedOnly") === "true",
   });
 
-  return NextResponse.json(
+  return corsJsonResponse(
     { data: proposals },
     {
       headers: {

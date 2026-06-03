@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { listSpaces } from "@/lib/repository";
 
 export const runtime = "nodejs";
+
+import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
+
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
+
 const DEFAULT_SPACE_LIMIT = 200;
 const SPACE_API_S_MAXAGE_SECONDS = 120;
 const SPACE_API_STALE_WHILE_REVALIDATE_SECONDS = 300;
@@ -16,7 +23,7 @@ export async function GET(request: NextRequest) {
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_SPACE_LIMIT,
   });
 
-  return NextResponse.json(
+  return corsJsonResponse(
     { data: spaces },
     {
       headers: {
