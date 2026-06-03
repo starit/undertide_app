@@ -101,7 +101,7 @@ export function SiteHeaderClient({
               );
             })}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-3">
             <ThemeSwitcher />
             <LocaleSwitcher />
           </div>

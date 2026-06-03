@@ -386,8 +386,8 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
     <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 md:py-16">
       {children}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
-        <div className="order-2 flex min-w-0 flex-col gap-8 lg:order-1">
-          <div className="border border-border bg-card p-5 shadow-panel md:p-8">
+        <div className="flex min-w-0 flex-col gap-8 lg:order-1">
+          <div className="break-words border border-border bg-card p-5 shadow-panel md:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/spaces/${proposal.spaceSlug}`}
@@ -534,7 +534,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                   <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                     {tProposals("summary")}
                   </p>
-                  <p className={`mt-2 text-sm leading-6 text-foreground/90 ${!isSummaryExpanded && isSummaryLong ? "line-clamp-4" : ""}`}>
+                  <p className={`mt-2 break-words text-sm leading-6 text-foreground/90 ${!isSummaryExpanded && isSummaryLong ? "line-clamp-4" : ""}`}>
                     {summaryText}
                   </p>
                   {isSummaryLong ? (
@@ -643,7 +643,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
           </Card>
         </div>
 
-        <div className="order-1 flex min-w-0 flex-col gap-6 lg:order-2 lg:sticky lg:top-6 lg:self-start">
+        <div className="flex min-w-0 flex-col gap-6 lg:order-2 lg:sticky lg:top-6 lg:self-start">
           <VotingResults
             choices={proposal.choices}
             scores={proposal.scores}

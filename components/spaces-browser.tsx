@@ -131,7 +131,7 @@ export function SpacesBrowser({ spaces, totalSpacesCount, initialLoadLimit = 200
   }, [category, deferredQuery, locale, sort, verifiedOnly]);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex w-full max-w-full flex-col gap-8 overflow-hidden">
       <div className="grid gap-4 border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto] md:p-5">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

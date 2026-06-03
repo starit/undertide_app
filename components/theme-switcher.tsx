@@ -104,7 +104,7 @@ export function ThemeSwitcher() {
   }, [aiPrompt, apply, importTheme, t]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:gap-3">
+    <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-3">
       <div className="flex min-w-0 shrink-0 items-center gap-2">
         <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
           <Sun className="size-3.5" />
@@ -129,7 +129,7 @@ export function ThemeSwitcher() {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex min-w-0 flex-col gap-1 border border-border bg-card/40 p-2 md:max-w-[min(15rem,calc(100vw-12rem))] md:border-0 md:border-l md:border-border md:bg-transparent md:p-0 md:pl-3">
+      <div className="flex min-w-0 flex-col gap-2 border border-border bg-card/40 p-3 md:max-w-[min(15rem,calc(100vw-12rem))] md:border-0 md:border-l md:border-border md:bg-transparent md:p-0 md:pl-3">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground md:sr-only">{t("themeAiLabel")}</p>
         <div className="flex min-w-0 gap-1">
           <Input
