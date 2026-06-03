@@ -223,6 +223,11 @@ function VotingResults({
     <Card>
       <CardHeader>
         <CardTitle>{isLive ? tProposals("liveResults") : tProposals("votingResults")}</CardTitle>
+        {type && (
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            {tProposals("votingType")}: <span className="capitalize">{type.replace(/-/g, " ")}</span>
+          </p>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {outcome && (
@@ -434,7 +439,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 ))}
               </div>
             )}
-            <div className="mt-6 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2 md:grid-cols-3">
+            <div className="mt-6 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("published")}</p>
                 <p className="mt-2">{new Date(proposal.publishedAt).toLocaleString(uiLocale)}</p>
@@ -443,22 +448,6 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("closes")}</p>
                 <p className="mt-2">{new Date(proposal.closesAt).toLocaleString(uiLocale)}</p>
               </div>
-              <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("votes")}</p>
-                <p className="mt-2">{proposal.votesCount.toLocaleString()}</p>
-              </div>
-              {proposal.type && (
-                <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("votingType")}</p>
-                  <p className="mt-2 capitalize">{proposal.type.replace(/-/g, " ")}</p>
-                </div>
-              )}
-              {proposal.quorum != null && (
-                <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{tProposals("quorum")}</p>
-                  <p className="mt-2">{proposal.quorum.toLocaleString()}</p>
-                </div>
-              )}
             </div>
             {(proposal.author || showReadingLocale) && (
               <>
