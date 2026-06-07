@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { parseLimitParam, parseProtocolSourceParam, parseTextParam } from "@/lib/governance/api";
 import { listGovernanceProtocols } from "@/lib/governance/repository";
 
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
+export const GET = safeApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const source = parseProtocolSourceParam(searchParams);
   if (!source.ok) return source.response;
@@ -18,5 +19,9 @@ export async function GET(request: NextRequest) {
     limit: limit.value,
   });
 
-  return NextResponse.json(response);
+  return corsJsonResponse(response);
+});
+
+export async function OPTIONS() {
+  return handleCorsPreflight();
 }

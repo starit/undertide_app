@@ -8,7 +8,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ idOrSlug: 
   const organization = await getTallyOrganization(idOrSlug);
 
   if (!organization) {
-    return NextResponse.json({ error: "Tally organization not found" }, { status: 404 });
+    return NextResponse.json({ error: "Tally organization not found", status: 404 }, { status: 404 });
   }
 
   return NextResponse.json({ data: organization });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listSpaces } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     category: searchParams.get("category") ?? undefined,
     verified: searchParams.get("verified") === null ? undefined : searchParams.get("verified") === "true",
     sort: (searchParams.get("sort") as "activity" | "followers" | null) ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_SPACE_LIMIT,
+    limit: parseLimitParamSafe(searchParams, DEFAULT_SPACE_LIMIT),
     locale: searchParams.get("locale") ?? undefined,
   });
 

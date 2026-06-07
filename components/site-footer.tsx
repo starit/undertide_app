@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import Link from "next/link";
 
 export async function SiteFooter() {
   const tFooter = await getTranslations("footer");
@@ -7,7 +8,12 @@ export async function SiteFooter() {
     <footer className="border-t border-border">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-8">
         <p>{tFooter("summary")}</p>
-        <p className="font-mono text-xs uppercase tracking-[0.24em]">{tFooter("methodology")}</p>
+        <div className="flex items-center gap-4">
+          <Link href="/api/docs" className="hover:text-foreground transition-colors">
+            API
+          </Link>
+          <p className="font-mono text-xs uppercase tracking-[0.24em]">{tFooter("methodology")}</p>
+        </div>
       </div>
     </footer>
   );

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParamSafe } from "@/lib/governance/api";
 import { getTallyOrganization, listTallyProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const organization = await getTallyOrganization(idOrSlug);
 
   if (!organization) {
-    return NextResponse.json({ error: "Tally organization not found" }, { status: 404 });
+    return NextResponse.json({ error: "Tally organization not found", status: 404 }, { status: 404 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     organizationId: organization.id,
     status: searchParams.get("status") ?? undefined,
     chainId: searchParams.get("chainId") ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_TALLY_PROPOSAL_LIMIT,
+    limit: parseLimitParamSafe(searchParams, DEFAULT_TALLY_PROPOSAL_LIMIT),
   });
 
   return NextResponse.json({ data: proposals });

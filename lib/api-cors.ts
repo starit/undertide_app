@@ -42,3 +42,28 @@ export function corsJsonResponse(
     headers,
   });
 }
+
+/**
+ * Wraps an API route handler with try/catch so unhandled errors
+ * always return a consistent JSON error response (never HTML).
+ *
+ * Usage:
+ *   export const GET = safeApiHandler(async (request) => { ... });
+ *   export const OPTIONS = handleCorsPreflight;
+ */
+export function safeApiHandler<T extends (request: Request, ...args: unknown[]) => Promise<Response>>(
+  handler: T
+): T {
+  return (async (request: Request, ...args: unknown[]) => {
+    try {
+      return await handler(request, ...args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal server error";
+      console.error("[api] unhandled error:", error);
+      return corsJsonResponse(
+        { error: "Internal server error", status: 500 },
+        { status: 500 }
+      );
+    }
+  }) as T;
+}

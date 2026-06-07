@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listSpaces } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
-import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 
 export async function OPTIONS() {
   return handleCorsPreflight();
@@ -13,14 +14,14 @@ const DEFAULT_SPACE_LIMIT = 200;
 const SPACE_API_S_MAXAGE_SECONDS = 120;
 const SPACE_API_STALE_WHILE_REVALIDATE_SECONDS = 300;
 
-export async function GET(request: NextRequest) {
+export const GET = safeApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const spaces = await listSpaces({
     q: searchParams.get("q") ?? undefined,
     category: searchParams.get("category") ?? undefined,
     verified: searchParams.get("verified") === null ? undefined : searchParams.get("verified") === "true",
     sort: (searchParams.get("sort") as "activity" | "followers" | null) ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_SPACE_LIMIT,
+    limit: parseLimitParamSafe(searchParams, DEFAULT_SPACE_LIMIT),
   });
 
   return corsJsonResponse(
@@ -31,4 +32,4 @@ export async function GET(request: NextRequest) {
       },
     }
   );
-}
+});

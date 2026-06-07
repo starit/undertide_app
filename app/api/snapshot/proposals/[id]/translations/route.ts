@@ -13,7 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const proposal = await getProposalById(id);
 
   if (!proposal) {
-    return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    return NextResponse.json({ error: "Proposal not found", status: 404 }, { status: 404 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (locale) {
     const translation = await getProposalTranslation(id, locale);
     if (!translation) {
-      return NextResponse.json({ error: "Translation not found" }, { status: 404 });
+      return NextResponse.json({ error: "Translation not found", status: 404 }, { status: 404 });
     }
 
     return NextResponse.json({ data: translation });

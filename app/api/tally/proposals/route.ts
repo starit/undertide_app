@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listTallyProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     organizationSlug: searchParams.get("organizationSlug") ?? undefined,
     status: searchParams.get("status") ?? undefined,
     chainId: searchParams.get("chainId") ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_TALLY_PROPOSAL_LIMIT,
+    limit: parseLimitParamSafe(searchParams, DEFAULT_TALLY_PROPOSAL_LIMIT),
   });
 
   return NextResponse.json(

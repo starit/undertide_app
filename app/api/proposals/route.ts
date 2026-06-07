@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
-import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 
 export async function OPTIONS() {
   return handleCorsPreflight();
@@ -13,14 +14,14 @@ const DEFAULT_PROPOSAL_LIMIT = 24;
 const PROPOSAL_API_S_MAXAGE_SECONDS = 60;
 const PROPOSAL_API_STALE_WHILE_REVALIDATE_SECONDS = 180;
 
-export async function GET(request: NextRequest) {
+export const GET = safeApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const proposals = await listProposals({
     q: searchParams.get("q") ?? undefined,
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
     sort: (searchParams.get("sort") as "time" | null) ?? undefined,
     spaceSlug: searchParams.get("spaceSlug") ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_PROPOSAL_LIMIT,
+    limit: parseLimitParamSafe(searchParams, DEFAULT_PROPOSAL_LIMIT),
     locale: searchParams.get("locale") ?? undefined,
     translatedOnly: searchParams.get("translatedOnly") === "true",
   });
@@ -33,4 +34,4 @@ export async function GET(request: NextRequest) {
       },
     }
   );
-}
+});

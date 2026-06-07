@@ -6,9 +6,11 @@ const routes = [
     path: "/api/health",
     description: "Service health check.",
     response: `{
-  "ok": true,
-  "database": "configured | mock",
-  "mode": "neon-http | mock"
+  "data": {
+    "ok": true,
+    "database": "configured | mock",
+    "mode": "neon-http | mock"
+  }
 }`,
   },
   {
@@ -157,8 +159,38 @@ const routes = [
       { name: "limit", type: "number", description: "Page size (default 50, max 200)." },
     ],
     response: `{
-  "protocols": [...],
-  "total": 42
+  "data": [
+    {
+      "id": "uniswap",
+      "slug": "uniswap",
+      "name": "Uniswap",
+      "sources": ["snapshot:uniswapgovernance.eth", "tally:2206072050089460990"]
+    }
+  ],
+  "pageInfo": {
+    "nextCursor": null,
+    "hasNextPage": false
+  },
+  "meta": {
+    "sources": {
+      "snapshot": { "syncedAt": "2024-01-01T00:00:00Z" },
+      "tally": { "syncedAt": "2024-01-01T00:00:00Z" }
+    }
+  }
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/protocols/[id]",
+    description: "Get a single governance protocol by its ID or slug.",
+    response: `{
+  "data": {
+    "id": "uniswap",
+    "slug": "uniswap",
+    "name": "Uniswap",
+    "aliases": [],
+    "sources": ["snapshot:uniswapgovernance.eth", "tally:2206072050089460990"]
+  }
 }`,
   },
   {
@@ -166,8 +198,13 @@ const routes = [
     path: "/api/protocols/[id]/sources",
     description: "Get source refs (Snapshot space / Tally organization) for a protocol.",
     response: `{
-  "protocol": { "id": "uniswap", "slug": "uniswap", "name": "Uniswap" },
-  "sources": [...]
+  "data": {
+    "protocol": { "id": "uniswap", "slug": "uniswap", "name": "Uniswap" },
+    "sources": [
+      { "source": "snapshot", "id": "uniswapgovernance.eth", "name": "Uniswap", "type": "space" },
+      { "source": "tally", "id": "2206072050089460990", "name": "Uniswap", "type": "organization" }
+    ]
+  }
 }`,
   },
   {
@@ -182,8 +219,38 @@ const routes = [
       { name: "limit", type: "number", description: "Page size (default 50, max 200)." },
     ],
     response: `{
-  "proposals": [...],
-  "total": 12
+  "data": [
+    {
+      "id": "snapshot:0xabc...",
+      "title": "...",
+      "state": "active",
+      "source": "snapshot"
+    }
+  ],
+  "pageInfo": {
+    "nextCursor": null,
+    "hasNextPage": false
+  },
+  "meta": {
+    "sources": { ... }
+  }
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/sync",
+    description: "Get sync state for all governance data sources.",
+    response: `{
+  "data": {
+    "snapshot": {
+      "spaces": { "lastSuccessAt": "...", "lastError": null },
+      "proposals": { "lastSuccessAt": "...", "lastError": null }
+    },
+    "tally": {
+      "organizations": { "lastSuccessAt": "...", "lastError": null },
+      "proposals": { "lastSuccessAt": "...", "lastError": null }
+    }
+  }
 }`,
   },
 ];

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { getProposalById, getProposalTranslation, getProposalTranslations } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -16,12 +16,12 @@ function parseLocales(searchParams: URLSearchParams): string[] | undefined {
   return locales.length > 0 ? locales : undefined;
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = safeApiHandler(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   const proposal = await getProposalById(id);
 
   if (!proposal) {
-    return corsJsonResponse({ error: "Proposal not found" }, { status: 404 });
+    return corsJsonResponse({ error: "Proposal not found", status: 404 }, { status: 404 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (locale) {
     const translation = await getProposalTranslation(id, locale);
     if (!translation) {
-      return corsJsonResponse({ error: "Translation not found" }, { status: 404 });
+      return corsJsonResponse({ error: "Translation not found", status: 404 }, { status: 404 });
     }
 
     return corsJsonResponse(
@@ -52,4 +52,4 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     }
   );
-}
+});

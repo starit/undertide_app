@@ -10,7 +10,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const proposal = await getProposalDetail(id, locale);
 
   if (!proposal) {
-    return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    return NextResponse.json({ error: "Proposal not found", status: 404 }, { status: 404 });
   }
 
   return NextResponse.json({ data: proposal });

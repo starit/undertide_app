@@ -48,6 +48,18 @@ export function parseLimitParam(searchParams: URLSearchParams, defaultValue?: nu
   return { ok: true, value: parsed };
 }
 
+/**
+ * Like parseLimitParam but returns the default value on invalid input instead of a 400 error.
+ * Useful for public API routes that don't use the ParseResult pattern.
+ */
+export function parseLimitParamSafe(searchParams: URLSearchParams, defaultValue: number): number {
+  const raw = searchParams.get("limit");
+  if (raw == null || raw.trim() === "") return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 200) return defaultValue;
+  return parsed;
+}
+
 export function parseTextParam(searchParams: URLSearchParams, name: string) {
   const value = searchParams.get(name)?.trim();
   return value || undefined;

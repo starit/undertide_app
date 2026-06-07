@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     status: (searchParams.get("status") as "Active" | "Upcoming" | "Closed" | "Executed" | "All" | null) ?? undefined,
     sort: (searchParams.get("sort") as "time" | null) ?? undefined,
     spaceSlug: searchParams.get("spaceSlug") ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : DEFAULT_PROPOSAL_LIMIT,
+    limit: parseLimitParamSafe(searchParams, DEFAULT_PROPOSAL_LIMIT),
     locale: searchParams.get("locale") ?? undefined,
     translatedOnly: searchParams.get("translatedOnly") === "true",
   });

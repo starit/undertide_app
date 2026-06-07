@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { corsJsonResponse, handleCorsPreflight } from "@/lib/api-cors";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { GOVERNANCE_SOURCES } from "@/lib/governance/sources";
 import { listSnapshotSyncStates, listTallySyncStates } from "@/lib/repository";
 
@@ -9,7 +9,7 @@ export async function OPTIONS() {
   return handleCorsPreflight();
 }
 
-export async function GET() {
+export const GET = safeApiHandler(async () => {
   const [snapshotStates, tallyStates] = await Promise.all([
     listSnapshotSyncStates([GOVERNANCE_SOURCES.snapshot.spaceEntityType, GOVERNANCE_SOURCES.snapshot.proposalEntityType]),
     listTallySyncStates([GOVERNANCE_SOURCES.tally.spaceEntityType, GOVERNANCE_SOURCES.tally.proposalEntityType]),
@@ -47,7 +47,7 @@ export async function GET() {
       },
     ],
   });
-}
+});
 
 function latestSuccessfulSync(states: Array<{ lastSuccessAt: string | null }>) {
   const timestamps = states

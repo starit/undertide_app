@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import {
   parseLimitParam,
   parseProtocolProposalSortParam,
@@ -11,7 +12,7 @@ import { listGovernanceProtocolProposals } from "@/lib/governance/repository";
 
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = safeApiHandler(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   const { searchParams } = new URL(request.url);
   const parsedId = parseRouteId(id, "protocol id");
@@ -40,8 +41,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   });
 
   if (!response) {
-    return NextResponse.json({ error: "Protocol not found" }, { status: 404 });
+    return corsJsonResponse({ error: "Protocol not found", status: 404 }, { status: 404 });
   }
 
-  return NextResponse.json(response);
+  return corsJsonResponse(response);
+});
+
+export async function OPTIONS() {
+  return handleCorsPreflight();
 }

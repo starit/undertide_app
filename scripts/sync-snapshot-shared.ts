@@ -394,6 +394,12 @@ export async function upsertProposalsBatch(
 export async function refreshSpaceProposalCounts(db: SyncDb, spaceIds: string[]): Promise<void> {
   if (spaceIds.length === 0) return;
 
+  // Build a safe string literal for text[] — avoids the Neon+NeonDbError type-cast bug
+  // where Drizzle passes the array as "record" and PG cannot cast record to text[].
+  const spaceIdsLiteral = drizzleSql.raw(
+    `'{${spaceIds.map((id) => id.replace(/'/g, "''")).join(",")}}'`
+  );
+
   await withDatabaseRetry("refreshSpaceProposalCounts", () =>
     db.execute(
       drizzleSql`
@@ -402,7 +408,7 @@ export async function refreshSpaceProposalCounts(db: SyncDb, spaceIds: string[])
         from (
           select ${snapshotProposals.spaceId} as sid, count(*)::int as count
           from ${snapshotProposals}
-          where ${snapshotProposals.spaceId} = any(${spaceIds}::text[])
+          where ${snapshotProposals.spaceId} = any(${spaceIdsLiteral}::text[])
           group by ${snapshotProposals.spaceId}
         ) subq
         where ${snapshotSpaces.id} = subq.sid
