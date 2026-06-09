@@ -51,7 +51,7 @@ export function corsJsonResponse(
  *   export const GET = safeApiHandler(async (request) => { ... });
  *   export const OPTIONS = handleCorsPreflight;
  */
-export function safeApiHandler<T extends (request: Request, ...args: unknown[]) => Promise<Response>>(
+export function safeApiHandler<T extends (...args: any[]) => Promise<Response>>(
   handler: T
 ): T {
   return (async (request: Request, ...args: unknown[]) => {

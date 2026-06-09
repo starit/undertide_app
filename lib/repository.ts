@@ -113,6 +113,8 @@ type ProposalRecord = {
   translation: typeof proposalTranslations.$inferSelect | null;
 };
 
+// The returned type is a subset of the full table row — the caller (mapProposal)
+// only accesses the fields we selected, so this cast is safe.
 type SlimProposalRecord = {
   proposal: Pick<
     typeof snapshotProposals.$inferSelect,
@@ -484,7 +486,9 @@ async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimPro
         ? query.status === "Executed"
           ? notInArray(snapshotProposals.state, ["active", "pending", "closed"])
           : eq(snapshotProposals.state, { Active: "active", Upcoming: "pending", Closed: "closed" }[query.status]!)
-        : undefined,
+        : query.sort === "expiring"
+          ? eq(snapshotProposals.state, "active")
+          : undefined,
     ];
 
     const normalizedLocale = normalizeTranslationLocale(query.locale);
@@ -797,7 +801,35 @@ async function fetchProposalById(id: string, locale?: string): Promise<ProposalR
     const [record] =
       normalizedLocale && normalizedLocale !== "en"
         ? await db
-            .select({ proposal: snapshotProposals, space: snapshotSpaces, translation: proposalTranslations })
+            .select({
+              proposal: {
+                id: snapshotProposals.id,
+                spaceId: snapshotProposals.spaceId,
+                title: snapshotProposals.title,
+                body: snapshotProposals.body,
+                state: snapshotProposals.state,
+                author: snapshotProposals.author,
+                createdTs: snapshotProposals.createdTs,
+                endTs: snapshotProposals.endTs,
+                votesCount: snapshotProposals.votesCount,
+                type: snapshotProposals.type,
+                labels: snapshotProposals.labels,
+                quorum: snapshotProposals.quorum,
+                quorumType: snapshotProposals.quorumType,
+                app: snapshotProposals.app,
+                discussion: snapshotProposals.discussion,
+                flagged: snapshotProposals.flagged,
+                scores: snapshotProposals.scores,
+                scoresTotal: snapshotProposals.scoresTotal,
+                choices: snapshotProposals.choices,
+              },
+              space: {
+                id: snapshotSpaces.id,
+                name: snapshotSpaces.name,
+                avatar: snapshotSpaces.avatar,
+              },
+              translation: proposalTranslations,
+            })
             .from(snapshotProposals)
             .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
             .leftJoin(
@@ -811,15 +843,39 @@ async function fetchProposalById(id: string, locale?: string): Promise<ProposalR
             .limit(1)
         : await db
             .select({
-              proposal: snapshotProposals,
-              space: snapshotSpaces,
+              proposal: {
+                id: snapshotProposals.id,
+                spaceId: snapshotProposals.spaceId,
+                title: snapshotProposals.title,
+                body: snapshotProposals.body,
+                state: snapshotProposals.state,
+                author: snapshotProposals.author,
+                createdTs: snapshotProposals.createdTs,
+                endTs: snapshotProposals.endTs,
+                votesCount: snapshotProposals.votesCount,
+                type: snapshotProposals.type,
+                labels: snapshotProposals.labels,
+                quorum: snapshotProposals.quorum,
+                quorumType: snapshotProposals.quorumType,
+                app: snapshotProposals.app,
+                discussion: snapshotProposals.discussion,
+                flagged: snapshotProposals.flagged,
+                scores: snapshotProposals.scores,
+                scoresTotal: snapshotProposals.scoresTotal,
+                choices: snapshotProposals.choices,
+              },
+              space: {
+                id: snapshotSpaces.id,
+                name: snapshotSpaces.name,
+                avatar: snapshotSpaces.avatar,
+              },
               translation: sql<null>`null`,
             })
             .from(snapshotProposals)
             .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
             .where(eq(snapshotProposals.id, id))
             .limit(1);
-    return record ?? null;
+    return (record as unknown as ProposalRecord) ?? null;
   } catch (e) {
     logDbError("fetchProposalById", e);
     return null;
