@@ -95,8 +95,8 @@
   --avatar-gradient-light-b: 38%;
 
   /* Font stacks — Tailwind `font-sans` / `font-serif` / `font-mono`; overridden inline from themed.js typography */
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+  --font-sans: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei UI", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4", "Noto Serif CJK SC", "Source Han Serif SC", "STSong", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   color-scheme: light;
@@ -240,18 +240,40 @@ a {
 }
 
 .proposal-markdown {
-  @apply break-words text-sm leading-7 md:text-base md:leading-8;
+  @apply break-words text-[0.9375rem] leading-[1.85] md:text-base md:leading-[1.875];
+  text-wrap: pretty;
+  font-feature-settings: "kern" 1, "liga" 1;
 }
 
 .proposal-markdown > * + * {
-  @apply mt-5;
+  @apply mt-6;
+}
+
+/* More breathing room before section headings */
+.proposal-markdown > * + h2,
+.proposal-markdown > * + h3 {
+  @apply mt-10;
+}
+
+.proposal-markdown > * + h4 {
+  @apply mt-7;
+}
+
+/* Tighten after headings — the heading introduces what follows */
+.proposal-markdown > h2 + *,
+.proposal-markdown > h3 + * {
+  @apply mt-3;
+}
+
+.proposal-markdown > h4 + * {
+  @apply mt-2;
 }
 
 .proposal-markdown h1,
 .proposal-markdown h2,
 .proposal-markdown h3,
 .proposal-markdown h4 {
-  @apply font-serif text-foreground;
+  @apply font-serif text-foreground leading-snug;
 }
 
 .proposal-markdown h1 {
@@ -259,17 +281,24 @@ a {
 }
 
 .proposal-markdown h2 {
-  @apply text-2xl;
+  @apply text-2xl border-b border-border pb-2.5;
 }
 
 .proposal-markdown h3 {
   @apply text-xl;
 }
 
+.proposal-markdown h4 {
+  @apply text-base font-semibold;
+}
+
 .proposal-markdown p,
-.proposal-markdown li,
-.proposal-markdown blockquote {
-  @apply text-muted-foreground;
+.proposal-markdown li {
+  @apply text-foreground/75;
+}
+
+.proposal-markdown > p:first-of-type {
+  @apply text-foreground/85 text-[1rem] leading-[1.9] md:text-[1.0625rem];
 }
 
 .proposal-markdown .proposal-list {
@@ -327,7 +356,8 @@ a {
 }
 
 .proposal-markdown .proposal-quote {
-  @apply my-6 border-l-4 border-accent/70 bg-muted/50 px-4 py-3 text-muted-foreground md:px-5 md:py-4;
+  @apply my-6 rounded-r border-l-[3px] border-accent/50 bg-accent/5 px-4 py-3.5 text-foreground/75 md:px-5 md:py-4;
+  font-style: italic;
 }
 
 .proposal-markdown .proposal-quote > *:first-child {

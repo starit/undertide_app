@@ -429,7 +429,7 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 {activeLocale.toUpperCase()}
               </Badge>
             </div>
-            <h1 className="mt-5 max-w-4xl text-balance font-serif text-[1.75rem] leading-tight md:text-[2.5rem]">{proposal.title}</h1>
+            <h1 className="mt-5 max-w-4xl text-balance font-serif text-[1.75rem] leading-snug md:text-[2.5rem] md:leading-[1.3]">{proposal.title}</h1>
             {proposal.labels.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {proposal.labels.map((label) => (
@@ -519,11 +519,11 @@ export function ProposalDetailClient({ proposalId, initialProposal, initialLocal
                 </p>
               ) : null}
               {summaryText ? (
-                <div className="mb-5 border-l-2 border-border bg-muted/40 px-4 py-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                <div className="mb-6 rounded-r border-l-[3px] border-accent/50 bg-accent/5 px-4 py-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent/80">
                     {tProposals("summary")}
                   </p>
-                  <p className={`mt-2 break-words text-sm leading-6 text-foreground/90 ${!isSummaryExpanded && isSummaryLong ? "line-clamp-4" : ""}`}>
+                  <p className={`mt-2.5 break-words text-[0.9375rem] leading-[1.8] text-foreground/80 md:text-base ${!isSummaryExpanded && isSummaryLong ? "line-clamp-4" : ""}`}>
                     {summaryText}
                   </p>
                   {isSummaryLong ? (
