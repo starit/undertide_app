@@ -187,10 +187,10 @@ export async function listProposals(query: ProposalFilters = {}): Promise<Propos
   return records.map((record) => mapProposal(record, { includeBody: false }));
 }
 
-export async function getProposalById(id: string, locale?: string): Promise<Proposal | null> {
-  const record = await fetchProposalById(id, locale);
+export const getProposalById = cache(async (id: string, locale?: string): Promise<Proposal | null> => {
+  const record = await getCachedProposalRecord(id, proposalDetailCacheLocale(locale));
   return record ? mapProposal(record, { includeBody: true }) : null;
-}
+});
 
 export async function getProposalTranslations(proposalId: string, locales?: string[]): Promise<ProposalTranslation[]> {
   const records = await fetchProposalTranslations(proposalId, locales);
@@ -205,12 +205,9 @@ export async function getProposalTranslation(
   return record ? mapProposalTranslation(record) : null;
 }
 
-export async function getProposalDetail(
-  id: string,
-  locale?: string
-): Promise<ProposalDetail | null> {
-  const normalizedLocale = normalizeTranslationLocale(locale);
-  const record = await fetchProposalById(id, normalizedLocale);
+export const getProposalDetail = cache(async (id: string, locale?: string): Promise<ProposalDetail | null> => {
+  const cacheLocale = proposalDetailCacheLocale(locale);
+  const record = await getCachedProposalRecord(id, cacheLocale);
   const proposal = record ? mapProposal(record, { includeBody: true }) : null;
   if (!proposal || !record) return null;
 
@@ -220,7 +217,7 @@ export async function getProposalDetail(
   const scoresTotal = record.proposal.scoresTotal != null ? Number(record.proposal.scoresTotal) : null;
 
   return { ...proposal, translation, choices, scores, scoresTotal };
-}
+});
 
 export async function listSpaceProposals(spaceSlug: string, query: Omit<ProposalFilters, "spaceSlug"> = {}) {
   return listProposals({ ...query, spaceSlug });
@@ -280,7 +277,25 @@ export async function getPlatformStats(): Promise<PlatformStats> {
 const SPACE_LIST_REVALIDATE_SECONDS = 120;
 const SPACE_DETAIL_REVALIDATE_SECONDS = 300;
 const PROPOSAL_LIST_REVALIDATE_SECONDS = 60;
+/** Proposal detail (incl. body) changes rarely; longer TTL cuts Neon PK+body fetches. */
+const PROPOSAL_DETAIL_REVALIDATE_SECONDS = 600;
 const PLATFORM_STATS_REVALIDATE_SECONDS = 120;
+
+/** Collapse undefined/`en` so English detail shares one cache entry with the no-locale path. */
+function proposalDetailCacheLocale(locale?: string): string {
+  const normalized = normalizeTranslationLocale(locale);
+  if (!normalized || normalized === "en") return "en";
+  return normalized;
+}
+
+const getCachedProposalRecord = unstable_cache(
+  async (id: string, locale: string) => fetchProposalById(id, locale === "en" ? undefined : locale),
+  ["proposal-detail"],
+  {
+    revalidate: PROPOSAL_DETAIL_REVALIDATE_SECONDS,
+    tags: ["proposals", "spaces", "translations"],
+  }
+);
 
 const getCachedSpaces = unstable_cache(
   async (query: NormalizedSpaceFilters) => {

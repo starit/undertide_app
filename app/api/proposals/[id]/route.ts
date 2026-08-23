@@ -8,8 +8,8 @@ export async function OPTIONS() {
   return handleCorsPreflight();
 }
 
-const PROPOSAL_DETAIL_API_S_MAXAGE_SECONDS = 300;
-const PROPOSAL_DETAIL_API_STALE_WHILE_REVALIDATE_SECONDS = 600;
+const PROPOSAL_DETAIL_API_S_MAXAGE_SECONDS = 600;
+const PROPOSAL_DETAIL_API_STALE_WHILE_REVALIDATE_SECONDS = 1800;
 
 export const GET = safeApiHandler(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;

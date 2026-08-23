@@ -789,12 +789,14 @@ The caching approach accounts for the Vercel Serverless architecture:
 `lib/repository.ts` wraps the main data-fetching entry points with `unstable_cache`:
 
 ```typescript
-const getCachedSpaces = unstable_cache(fetchSpaces, ["spaces-list"], { revalidate: 120, tags: ["spaces", "translations"] });
-const getCachedProposals = unstable_cache(fetchProposals, ["proposals-list"], { revalidate: 60, tags: ["proposals", "spaces", "translations"] });
+const getCachedSpaces = unstable_cache(..., { revalidate: 120, tags: ["spaces", "translations"] });
+const getCachedProposals = unstable_cache(..., { revalidate: 60, tags: ["proposals", "spaces", "translations"] });
+const getCachedProposalRecord = unstable_cache(..., { revalidate: 600, tags: ["proposals", "spaces", "translations"] });
 ```
 
 - `listSpaces(query)` → `getCachedSpaces(normalizeSpaceFilters(query))`
 - `listProposals(query)` → `getCachedProposals(normalizeProposalFilters(query))`
+- `getProposalById` / `getProposalDetail` → shared `getCachedProposalRecord(id, locale)` (also wrapped with React `cache()` for per-request dedupe)
 - `getPlatformStats()` → `getCachedPlatformStats()`
 
 Cache tags enable fine-grained invalidation via `revalidateTag()`.
@@ -808,6 +810,7 @@ Cache-Control: public, s-maxage=<N>, stale-while-revalidate=<3xN>
 
 - `/api/snapshot/spaces`: s-maxage=120s
 - `/api/snapshot/proposals`: s-maxage=60s
+- `/api/proposals/[id]` and `/api/snapshot/proposals/[id]`: s-maxage=600s (stale-while-revalidate=1800s)
 
 Client components fetch from `/api/snapshot/*`. These requests bypass `unstable_cache` and rely on Vercel's Edge Network CDN to absorb repeated requests.
 
