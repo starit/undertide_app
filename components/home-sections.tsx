@@ -59,7 +59,7 @@ export async function ActivityAtAGlance({ stats }: { stats: PlatformStats }) {
           title={tHome("activityDescription")}
           description=""
         />
-        <div className="mt-6 grid gap-px border border-border bg-border sm:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-4">
           {[
             { label: tSpaces("supportedSpaces", { count: stats.spacesCount }), value: stats.spacesCount.toLocaleString() },
             { label: tProposals("supportedProposals", { count: stats.proposalsCount }), value: stats.proposalsCount.toLocaleString() },
@@ -68,7 +68,7 @@ export async function ActivityAtAGlance({ stats }: { stats: PlatformStats }) {
           ].map((stat) => (
             <div key={stat.label} className="bg-background px-4 py-4">
               <p className="text-2xl font-bold">{stat.value}</p>
-              <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="mt-1 break-words font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 {stat.label}
               </p>
             </div>
@@ -274,7 +274,7 @@ export async function ExpiringProposalsSection({ proposals }: { proposals: Propo
                       <Clock className="size-3.5" />
                       <span>{proposal.endTs ? formatTimeLeft(proposal.endTs) : "—"}</span>
                     </div>
-                    <CardTitle className="mt-1 line-clamp-2 text-sm font-medium leading-snug md:text-base">
+                    <CardTitle className="mt-1 line-clamp-2 break-all text-sm font-medium leading-snug md:text-base">
                       {proposal.title}
                     </CardTitle>
                   </CardHeader>

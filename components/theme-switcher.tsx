@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { applyAppHslVarsToElement, persistAiHslThemeJson } from "@/lib/ai-theme-to-app-hsl";
+import { cn } from "@/lib/utils";
 const themes = [
   { value: "light", labelKey: "themeLight" as const, icon: Sun },
   { value: "dark", labelKey: "themeDark" as const, icon: Moon },
@@ -26,7 +27,7 @@ const themes = [
 
 const MAX_PROMPT_LENGTH = 800;
 
-export function ThemeSwitcher() {
+export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
   const t = useTranslations("nav");
   const { theme, setTheme } = useNextTheme();
   const { importTheme, apply } = useThemedJsTheme();
@@ -104,9 +105,19 @@ export function ThemeSwitcher() {
   }, [aiPrompt, apply, importTheme, t]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-3">
+    <div
+      className={cn(
+        "flex min-w-0 flex-col gap-3",
+        compact ? "xl:flex-row xl:items-center xl:gap-3" : "md:flex-row md:items-center md:gap-3"
+      )}
+    >
       <div className="flex min-w-0 shrink-0 items-center gap-2">
-        <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+        <span
+          className={cn(
+            "inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground",
+            compact && "hidden 2xl:inline-flex"
+          )}
+        >
           <Sun className="size-3.5" />
           {t("theme")}
         </span>
@@ -129,8 +140,15 @@ export function ThemeSwitcher() {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex min-w-0 flex-col gap-2 border border-border bg-card/40 p-3 md:max-w-[min(15rem,calc(100vw-12rem))] md:border-0 md:border-l md:border-border md:bg-transparent md:p-0 md:pl-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground md:sr-only">{t("themeAiLabel")}</p>
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-2 border border-border bg-card/40 p-3",
+          compact
+            ? "hidden xl:flex xl:max-w-[min(15rem,calc(100vw-18rem))] xl:border-0 xl:border-l xl:border-border xl:bg-transparent xl:p-0 xl:pl-3"
+            : "md:max-w-[min(15rem,calc(100vw-12rem))] md:border-0 md:border-l md:border-border md:bg-transparent md:p-0 md:pl-3"
+        )}
+      >
+        <p className={cn("font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground", compact ? "xl:sr-only" : "md:sr-only")}>{t("themeAiLabel")}</p>
         <div className="flex min-w-0 gap-1">
           <Input
             value={aiPrompt}

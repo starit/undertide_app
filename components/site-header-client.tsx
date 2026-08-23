@@ -30,8 +30,8 @@ export function SiteHeaderClient({
 
   return (
     <header className="relative z-20 border-b border-border bg-background/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:gap-4 md:px-8 md:py-4">
-        <Link href="/" className="logo-link flex min-w-0 flex-1 items-center gap-2.5 md:gap-3">
+      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:px-8 md:py-4 lg:gap-4">
+        <Link href="/" className="logo-link flex min-w-0 flex-1 items-center gap-2.5 md:gap-3 lg:flex-none lg:shrink-0">
           <div className="logo-icon-box flex size-9 shrink-0 items-center justify-center border border-border bg-brand text-brand-foreground md:size-11">
             <Waves className="logo-icon size-4 md:size-5" />
           </div>
@@ -42,8 +42,8 @@ export function SiteHeaderClient({
             <span className="truncate font-serif text-lg leading-none md:text-2xl">UnderTide</span>
           </div>
         </Link>
-        <div className="hidden items-center gap-4 md:flex">
-          <nav className="flex items-center gap-1">
+        <div className="hidden min-w-0 items-center justify-end gap-3 lg:flex xl:gap-4">
+          <nav className="flex shrink-0 items-center gap-1">
             {navItems.map((item) => {
               const isActive = isNavItemActive(pathname, item.href);
 
@@ -64,14 +64,14 @@ export function SiteHeaderClient({
               );
             })}
           </nav>
-          <ThemeSwitcher />
-          <LocaleSwitcher />
+          <ThemeSwitcher compact />
+          <LocaleSwitcher compact />
         </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="size-9 shrink-0 p-0 md:hidden"
+          className="size-9 shrink-0 p-0 lg:hidden"
           aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
           onClick={() => setMobileMenuOpen((open) => !open)}
         >
@@ -79,7 +79,7 @@ export function SiteHeaderClient({
         </Button>
       </div>
       {mobileMenuOpen && (
-        <div className="absolute left-0 right-0 top-full z-50 grid gap-3 border-b border-border bg-background/95 p-3 backdrop-blur md:hidden">
+        <div className="absolute left-0 right-0 top-full z-50 grid gap-3 border-b border-border bg-background/95 p-3 backdrop-blur lg:hidden">
           <nav className="grid gap-1">
             {navItems.map((item) => {
               const isActive = isNavItemActive(pathname, item.href);

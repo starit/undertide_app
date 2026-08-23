@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Languages } from "lucide-react";
 import { Locale, localeLabels, locales, UI_LOCALE_COOKIE } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function LocaleSwitcher() {
+export function LocaleSwitcher({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const locale = useLocale() as Locale;
   const t = useTranslations("nav");
@@ -25,8 +26,13 @@ export function LocaleSwitcher() {
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+    <div className="flex min-w-0 shrink-0 items-center gap-2">
+      <span
+        className={cn(
+          "inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground",
+          compact && "hidden 2xl:inline-flex"
+        )}
+      >
         <Languages className="size-3.5" />
         {t("language")}
       </span>
