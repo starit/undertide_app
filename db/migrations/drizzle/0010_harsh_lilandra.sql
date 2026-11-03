@@ -1,0 +1,4 @@
+CREATE INDEX "idx_snapshot_proposals_active_expiring" ON "snapshot_proposals" USING btree ("end_ts") WHERE "snapshot_proposals"."state" = 'active' AND "snapshot_proposals"."flagged" = false;--> statement-breakpoint
+CREATE INDEX "idx_snapshot_proposals_executed_feed" ON "snapshot_proposals" USING btree ("created_at" DESC NULLS LAST) WHERE "snapshot_proposals"."flagged" = false AND "snapshot_proposals"."state" NOT IN ('active', 'pending', 'closed');--> statement-breakpoint
+CREATE INDEX "idx_snapshot_spaces_activity" ON "snapshot_spaces" USING btree ("proposal_count" DESC NULLS LAST,"member_count" DESC NULLS LAST,"name") WHERE "snapshot_spaces"."flagged" = false;--> statement-breakpoint
+CREATE INDEX "idx_snapshot_spaces_followers" ON "snapshot_spaces" USING btree ("member_count" DESC NULLS LAST,"name") WHERE "snapshot_spaces"."flagged" = false;

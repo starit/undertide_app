@@ -52,8 +52,14 @@ export const snapshotSpaces = pgTable(
     networkIdx: index("idx_snapshot_spaces_network").on(table.network),
     createdAtIdx: index("idx_snapshot_spaces_created_at").on(table.createdAt),
     verifiedActivityIdx: index("idx_snapshot_spaces_verified_activity")
-      .on(table.proposalCount.desc(), table.memberCount.desc(), table.name)
+      .on(table.proposalCount.desc().nullsFirst(), table.memberCount.desc().nullsFirst(), table.name)
       .where(sql`${table.flagged} = false AND ${table.verified} = true`),
+    activityIdx: index("idx_snapshot_spaces_activity")
+      .on(table.proposalCount.desc().nullsFirst(), table.memberCount.desc().nullsFirst(), table.name)
+      .where(sql`${table.flagged} = false`),
+    followersIdx: index("idx_snapshot_spaces_followers")
+      .on(table.memberCount.desc().nullsFirst(), table.name)
+      .where(sql`${table.flagged} = false`),
     nameTrgmIdx: index("idx_snapshot_spaces_name_trgm").using("gin", table.name.op("gin_trgm_ops")),
     categoriesGinIdx: index("idx_snapshot_spaces_categories_gin").using("gin", table.categories),
   })
@@ -132,11 +138,18 @@ export const snapshotProposals = pgTable(
     titleTrgmIdx: index("idx_snapshot_proposals_title_trgm").using("gin", table.title.op("gin_trgm_ops")),
     createdTsIdx: index("idx_snapshot_proposals_created_ts").on(table.createdTs.desc()),
     feedIdx: index("idx_snapshot_proposals_feed")
-      .on(table.createdAt.desc())
+      .on(table.createdAt.desc().nullsFirst())
       .where(sql`${table.flagged} = false`),
     spaceFeedIdx: index("idx_snapshot_proposals_space_feed")
-      .on(table.spaceId, table.createdAt.desc())
+      .on(table.spaceId, table.createdAt.desc().nullsFirst())
       .where(sql`${table.flagged} = false`),
+    activeExpiringIdx: index("idx_snapshot_proposals_active_expiring")
+      .on(table.endTs)
+      .where(sql`${table.state} = 'active' AND ${table.flagged} = false`),
+    // Matches the "Executed" status filter (any state outside active/pending/closed).
+    executedFeedIdx: index("idx_snapshot_proposals_executed_feed")
+      .on(table.createdAt.desc().nullsFirst())
+      .where(sql`${table.flagged} = false AND ${table.state} NOT IN ('active', 'pending', 'closed')`),
   })
 );
 
@@ -223,7 +236,7 @@ export const snapshotSyncRuns = pgTable(
     createdAtIdx: index("idx_snapshot_sync_runs_created_at").on(table.createdAt),
     latestPerEntityTypeIdx: index("idx_snapshot_sync_runs_latest").on(
       table.entityType,
-      table.createdAt.desc()
+      table.createdAt.desc().nullsFirst()
     ),
   })
 );

@@ -33,7 +33,7 @@ export default async function HomePage() {
     getPlatformStats(),
     listProposals({ sort: "time", limit: 6, locale }),
     listProposals({ sort: "expiring", limit: 4, locale }),
-    listSpaces({ sort: "activity", limit: 6 }),
+    listSpaces({ sort: "activity", verified: true, limit: 6 }),
   ]);
 
   return (
