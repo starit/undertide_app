@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { eq, getTableColumns, getTableName, inArray, sql as drizzleSql, type SQL } from "drizzle-orm";
+import { and, eq, getTableColumns, getTableName, inArray, lt, sql as drizzleSql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
@@ -573,7 +573,45 @@ export async function safelyUpsertSyncState(
   }
 }
 
+/**
+ * A run still marked "running" after this long is treated as dead (process killed, host asleep)
+ * and closed out as failed, so it neither blocks new runs nor shows up as in progress forever.
+ */
+const ABANDONED_SYNC_RUN_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Close out abandoned runs, then report whether a live run of this entity type is still going.
+ * Cron starts a new process on schedule even when the previous one has not finished; overlapping
+ * runs double API traffic (the cause of most Tally 429s) and race on the sync state.
+ */
+async function hasRunningSyncRun(db: SyncDb, entityType: string): Promise<boolean> {
+  const cutoff = new Date(Date.now() - ABANDONED_SYNC_RUN_MS);
+  const running = and(eq(snapshotSyncRuns.entityType, entityType), eq(snapshotSyncRuns.status, "running"));
+
+  await withDatabaseRetry(`closeAbandonedSyncRuns(${entityType})`, () =>
+    db
+      .update(snapshotSyncRuns)
+      .set({
+        status: "failed",
+        finishedAt: drizzleSql`now()`,
+        updatedAt: drizzleSql`now()`,
+        error: "abandoned: no finish recorded",
+      })
+      .where(and(running, lt(snapshotSyncRuns.createdAt, cutoff)))
+  );
+
+  const rows = await withDatabaseRetry(`findRunningSyncRun(${entityType})`, () =>
+    db.select({ id: snapshotSyncRuns.id }).from(snapshotSyncRuns).where(running).limit(1)
+  );
+  return rows.length > 0;
+}
+
 export async function runSync(db: SyncDb, entityType: string, task: () => Promise<number>): Promise<void> {
+  if (await hasRunningSyncRun(db, entityType)) {
+    console.warn(`[${entityType}] previous run is still in progress; skipping this run`);
+    return;
+  }
+
   const runId = await startSyncRun(db, entityType);
   try {
     const rowsUpserted = await task();
@@ -609,12 +647,17 @@ export async function revalidateDataCache(tags: string[]): Promise<void> {
     console.warn("[revalidate] NEXT_PUBLIC_BASE_URL not set, skipping cache invalidation");
     return;
   }
+  const secret = process.env.REVALIDATE_SECRET;
+  if (!secret) {
+    console.warn("[revalidate] REVALIDATE_SECRET not set, skipping cache invalidation");
+    return;
+  }
 
   for (const tag of tags) {
     try {
       const response = await fetch(`${baseUrl}/api/revalidate?tag=${encodeURIComponent(tag)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-revalidate-secret": secret },
       });
       if (!response.ok) {
         console.warn(`[revalidate] tag "${tag}" failed: ${response.status} ${response.statusText}`);

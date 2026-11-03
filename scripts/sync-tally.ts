@@ -62,7 +62,14 @@ if (!databaseUrl) throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is requ
 if (!tallyApiKey) throw new Error("TALLY_API_KEY is required.");
 
 const db = createDb(databaseUrl);
-const tally = createTallyClient({ apiKey: tallyApiKey, apiUrl: tallyApiUrl });
+const tallyMinRequestIntervalMs = Number(process.env.TALLY_MIN_REQUEST_INTERVAL_MS);
+const tally = createTallyClient({
+  apiKey: tallyApiKey,
+  apiUrl: tallyApiUrl,
+  minRequestIntervalMs: Number.isFinite(tallyMinRequestIntervalMs) && tallyMinRequestIntervalMs >= 0
+    ? tallyMinRequestIntervalMs
+    : undefined,
+});
 
 // ─── Counts ───────────────────────────────────────────────────────────────────
 

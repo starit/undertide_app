@@ -6,6 +6,9 @@
  *   2. Active refresh — re-fetch all active proposals to keep votes/scores current
  *   3. Recent-closed  — re-fetch proposals that ended in the last 48 h to capture
  *                       finalized scores
+ *   4. Stale-active   — re-fetch rows still stored as active/pending whose voting
+ *                       window has already passed (missed by stages 2–3, e.g. while
+ *                       the cron host was offline)
  *
  * Prerequisites: run sync:snapshot:backfill at least once to establish the
  * watermark. Without a watermark this script falls back to the last 7 days and
@@ -26,7 +29,7 @@
  *                        future runs use it automatically.
  */
 import "dotenv/config";
-import { desc, max } from "drizzle-orm";
+import { and, inArray, lt, max } from "drizzle-orm";
 import { snapshotProposals } from "../db/drizzle-schema";
 import {
   PROPOSAL_PAGE_SIZE,
@@ -209,6 +212,41 @@ async function syncRecentlyClosedProposals(): Promise<{ upserted: number; touche
   return { upserted, touchedSpaceIds };
 }
 
+// Stage 4: rows stored as active/pending although their voting window has passed. Stage 2 only
+// asks Snapshot for proposals that are active now and stage 3 only covers the last 48 h, so a
+// proposal whose closing update was missed would otherwise stay "active" in the DB forever.
+const STALE_STATE_FETCH_LIMIT = 5000;
+
+async function syncStaleActiveProposals(): Promise<{ upserted: number; touchedSpaceIds: Set<string> }> {
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await db
+    .select({ id: snapshotProposals.id })
+    .from(snapshotProposals)
+    .where(and(inArray(snapshotProposals.state, ["active", "pending"]), lt(snapshotProposals.endTs, now)))
+    .limit(STALE_STATE_FETCH_LIMIT);
+
+  const touchedSpaceIds = new Set<string>();
+  if (rows.length === 0) return { upserted: 0, touchedSpaceIds };
+
+  console.log(`[proposals:stale-active] re-fetching ${rows.length} proposals stored as active/pending past their end time`);
+
+  let upserted = 0;
+  let missing = 0;
+  // Snapshot's id_in filter accepts at most PROPOSAL_PAGE_SIZE (100) ids.
+  for (let i = 0; i < rows.length; i += PROPOSAL_PAGE_SIZE) {
+    const ids = rows.slice(i, i + PROPOSAL_PAGE_SIZE).map((row) => row.id);
+    const proposals = (await fetchProposalPage({ id_in: ids })).filter((proposal) => proposal?.space?.id);
+    missing += ids.length - proposals.length;
+    for (const proposal of proposals) touchedSpaceIds.add(proposal.space.id);
+    upserted += await upsertProposalsBatch(resolvedDatabaseUrl, proposals);
+  }
+
+  if (missing > 0) {
+    console.warn(`[proposals:stale-active] ${missing} proposals were not returned by Snapshot (deleted upstream?)`);
+  }
+  return { upserted, touchedSpaceIds };
+}
+
 const STALE_WARN_DAYS = 30;
 const STALE_BLOCK_DAYS = 90;
 
@@ -242,14 +280,16 @@ async function syncProposals(): Promise<number> {
     const { upserted: newCount, highestCreatedTs, touchedSpaceIds: touched1 } = await syncNewProposals(effectiveWatermark);
     const { upserted: activeCount, touchedSpaceIds: touched2 } = await syncActiveProposals();
     const { upserted: closedCount, touchedSpaceIds: touched3 } = await syncRecentlyClosedProposals();
+    const { upserted: staleCount, touchedSpaceIds: touched4 } = await syncStaleActiveProposals();
     const allTouched = new Set<string>();
     for (const id of touched1) allTouched.add(id);
     for (const id of touched2) allTouched.add(id);
     for (const id of touched3) allTouched.add(id);
+    for (const id of touched4) allTouched.add(id);
     await refreshSpaceProposalCounts(db, Array.from(allTouched));
     const newWatermark = highestCreatedTs > effectiveWatermark ? highestCreatedTs : effectiveWatermark;
     await safelyUpsertSyncState(db, "proposals", { last_created_ts: newWatermark });
-    return newCount + activeCount + closedCount;
+    return newCount + activeCount + closedCount + staleCount;
   }
 
   if (storedCreatedTs === null && !options.force && !options.since) {
@@ -310,18 +350,23 @@ async function syncProposals(): Promise<number> {
   const { upserted: closedCount, touchedSpaceIds: touched3 } = await syncRecentlyClosedProposals();
   console.log(`[proposals:recent-closed] done upserted=${closedCount}`);
 
+  // Stage 4
+  const { upserted: staleCount, touchedSpaceIds: touched4 } = await syncStaleActiveProposals();
+  console.log(`[proposals:stale-active] done upserted=${staleCount}`);
+
   // Refresh proposal counts for all touched spaces
   const allTouched = new Set<string>();
   for (const id of touched1) allTouched.add(id);
   for (const id of touched2) allTouched.add(id);
   for (const id of touched3) allTouched.add(id);
+  for (const id of touched4) allTouched.add(id);
   await refreshSpaceProposalCounts(db, Array.from(allTouched));
 
   // Advance watermark (never go backwards)
   const newWatermark = highestCreatedTs > (lastCreatedTs ?? 0) ? highestCreatedTs : (lastCreatedTs ?? highestCreatedTs);
   await safelyUpsertSyncState(db, "proposals", { last_created_ts: newWatermark });
 
-  return newCount + activeCount + closedCount;
+  return newCount + activeCount + closedCount + staleCount;
 }
 
 async function main() {
