@@ -666,6 +666,17 @@ async function fetchSearchedProposals(query: NormalizedProposalFilters): Promise
   const spaceProposalConditions = [`p.flagged = false`, `p.space_id in (select id from search_space_matches)`];
   appendProposalSearchScopeConditions(spaceProposalConditions, query, "p", addParam);
 
+  // pg_trgm cannot serve terms shorter than 3 characters, so a title ILIKE would
+  // scan all of snapshot_proposals; short terms match on space names only.
+  const titleMatchesSql =
+    searchTerm.length >= MIN_TRIGRAM_SEARCH_LENGTH
+      ? `select p.id
+        from snapshot_proposals p
+        where ${titleMatchConditions.join(" and ")}
+        order by p.created_at desc
+        limit ${candidateLimitParam}`
+      : `select null::text as id where false`;
+
   const finalConditions = [`p.flagged = false`, `s.flagged = false`];
   appendProposalSearchScopeConditions(finalConditions, query, "p", addParam);
 
@@ -685,18 +696,17 @@ async function fetchSearchedProposals(query: NormalizedProposalFilters): Promise
         select s.id
         from snapshot_spaces s
         where ${spaceMatchConditions.join(" and ")}
+        order by s.proposal_count desc, s.member_count desc, s.name
         limit ${spaceCandidateLimitParam}
       ),
       title_matches as (
-        select p.id
-        from snapshot_proposals p
-        where ${titleMatchConditions.join(" and ")}
-        limit ${candidateLimitParam}
+        ${titleMatchesSql}
       ),
       space_proposal_matches as (
         select p.id
         from snapshot_proposals p
         where ${spaceProposalConditions.join(" and ")}
+        order by p.created_at desc
         limit ${candidateLimitParam}
       ),
       candidate_ids as (
@@ -765,6 +775,8 @@ function appendProposalSearchScopeConditions(
 
   conditions.push(`${alias}.state = ${addParam(stateByStatus[query.status])}`);
 }
+
+const MIN_TRIGRAM_SEARCH_LENGTH = 3;
 
 function getProposalSearchCandidateLimit(limit: number | undefined) {
   return Math.min(1000, Math.max(300, normalizeLimit(limit, 200) * 25));
