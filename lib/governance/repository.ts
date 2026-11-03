@@ -8,8 +8,10 @@ import {
   tallyOrganizations,
   tallyProposals,
 } from "@/db/drizzle-schema";
-import { getDb, hasDatabase } from "@/lib/db";
+import { getDb, hasDatabase, withDbFallback } from "@/lib/db";
 import { makeSourceScopedId } from "@/lib/governance/sources";
+import { containsPattern, normalizeSearchQuery } from "@/lib/search";
+import { safeExternalUrl } from "@/lib/utils";
 import {
   excerpt,
   normalizeSnapshotStatus,
@@ -155,14 +157,14 @@ export async function listGovernanceProtocols(
 ): Promise<GovernanceListResponse<GovernanceProtocol>> {
   if (!hasDatabase) return emptyListResponse([]);
 
-  const data = await getCachedProtocols(query);
+  const data = await withDbFallback("listGovernanceProtocols", () => getCachedProtocols(query), []);
   return withSourceMeta(data);
 }
 
 export async function getGovernanceProtocol(idOrSlug: string): Promise<GovernanceProtocol | null> {
   if (!hasDatabase) return null;
 
-  return getCachedProtocol(idOrSlug);
+  return withDbFallback("getGovernanceProtocol", () => getCachedProtocol(idOrSlug), null);
 }
 
 export async function listGovernanceProtocolSources(
@@ -170,7 +172,7 @@ export async function listGovernanceProtocolSources(
 ): Promise<{ protocol: Pick<GovernanceProtocol, "id" | "slug" | "name">; sources: GovernanceProtocolSourceRef[] } | null> {
   if (!hasDatabase) return null;
 
-  return getCachedProtocolSources(idOrSlug);
+  return withDbFallback("listGovernanceProtocolSources", () => getCachedProtocolSources(idOrSlug), null);
 }
 
 export async function listGovernanceProtocolProposals(
@@ -179,60 +181,60 @@ export async function listGovernanceProtocolProposals(
 ): Promise<GovernanceListResponse<GovernanceProposalListItem> | null> {
   if (!hasDatabase) return null;
 
-  const proposals = await getCachedProtocolProposals(idOrSlug, query);
+  const proposals = await withDbFallback(
+    "listGovernanceProtocolProposals",
+    () => getCachedProtocolProposals(idOrSlug, query),
+    null
+  );
   if (!proposals) return null;
 
   return withSourceMeta(proposals);
 }
 
 async function fetchProtocols(query: ProtocolFilters, limit: number): Promise<ProtocolRecord[]> {
-  try {
-    const db = getDb();
-    const normalizedQ = query.q?.trim();
-    const source = query.source && query.source !== "all" ? query.source : undefined;
+  const db = getDb();
+  const normalizedQ = normalizeSearchQuery(query.q);
+  const source = query.source && query.source !== "all" ? query.source : undefined;
 
-    if (source) {
-      const conditions: (SQL | undefined)[] = [
-        eq(governanceProtocolSources.source, source),
-        protocolSearchCondition(normalizedQ),
-      ];
-
-      return await db
-        .selectDistinct({
-          id: governanceProtocols.id,
-          slug: governanceProtocols.slug,
-          name: governanceProtocols.name,
-          aliases: governanceProtocols.aliases,
-          categories: governanceProtocols.categories,
-          website: governanceProtocols.website,
-          avatar: governanceProtocols.avatar,
-          metadata: governanceProtocols.metadata,
-          createdAt: governanceProtocols.createdAt,
-          updatedAt: governanceProtocols.updatedAt,
-        })
-        .from(governanceProtocols)
-        .innerJoin(governanceProtocolSources, eq(governanceProtocols.id, governanceProtocolSources.protocolId))
-        .where(and(...conditions))
-        .orderBy(governanceProtocols.name)
-        .limit(limit);
-    }
-
-    const conditions: (SQL | undefined)[] = [protocolSearchCondition(normalizedQ)];
+  if (source) {
+    const conditions: (SQL | undefined)[] = [
+      eq(governanceProtocolSources.source, source),
+      protocolSearchCondition(normalizedQ),
+    ];
 
     return await db
-      .select()
+      .selectDistinct({
+        id: governanceProtocols.id,
+        slug: governanceProtocols.slug,
+        name: governanceProtocols.name,
+        aliases: governanceProtocols.aliases,
+        categories: governanceProtocols.categories,
+        website: governanceProtocols.website,
+        avatar: governanceProtocols.avatar,
+        metadata: governanceProtocols.metadata,
+        createdAt: governanceProtocols.createdAt,
+        updatedAt: governanceProtocols.updatedAt,
+      })
       .from(governanceProtocols)
+      .innerJoin(governanceProtocolSources, eq(governanceProtocols.id, governanceProtocolSources.protocolId))
       .where(and(...conditions))
       .orderBy(governanceProtocols.name)
       .limit(limit);
-  } catch {
-    return [];
   }
+
+  const conditions: (SQL | undefined)[] = [protocolSearchCondition(normalizedQ)];
+
+  return await db
+    .select()
+    .from(governanceProtocols)
+    .where(and(...conditions))
+    .orderBy(governanceProtocols.name)
+    .limit(limit);
 }
 
 function protocolSearchCondition(query: string | undefined): SQL | undefined {
   if (!query) return undefined;
-  const pattern = `%${query}%`;
+  const pattern = containsPattern(query);
 
   return or(
     ilike(governanceProtocols.name, pattern),
@@ -248,33 +250,25 @@ function protocolSearchCondition(query: string | undefined): SQL | undefined {
 async function fetchProtocolByIdOrSlug(idOrSlug: string): Promise<ProtocolRecord | null> {
   if (!hasDatabase) return null;
 
-  try {
-    const db = getDb();
-    const [record] = await db
-      .select()
-      .from(governanceProtocols)
-      .where(or(eq(governanceProtocols.id, idOrSlug), eq(governanceProtocols.slug, idOrSlug)))
-      .limit(1);
+  const db = getDb();
+  const [record] = await db
+    .select()
+    .from(governanceProtocols)
+    .where(or(eq(governanceProtocols.id, idOrSlug), eq(governanceProtocols.slug, idOrSlug)))
+    .limit(1);
 
-    return record ?? null;
-  } catch {
-    return null;
-  }
+  return record ?? null;
 }
 
 async function fetchProtocolSources(protocolIds: string[]): Promise<ProtocolSourceRecord[]> {
   if (!hasDatabase || protocolIds.length === 0) return [];
 
-  try {
-    const db = getDb();
-    return await db
-      .select()
-      .from(governanceProtocolSources)
-      .where(inArray(governanceProtocolSources.protocolId, protocolIds))
-      .orderBy(governanceProtocolSources.protocolId, desc(governanceProtocolSources.isPrimary), governanceProtocolSources.source);
-  } catch {
-    return [];
-  }
+  const db = getDb();
+  return await db
+    .select()
+    .from(governanceProtocolSources)
+    .where(inArray(governanceProtocolSources.protocolId, protocolIds))
+    .orderBy(governanceProtocolSources.protocolId, desc(governanceProtocolSources.isPrimary), governanceProtocolSources.source);
 }
 
 async function fetchSnapshotProtocolProposals(
@@ -285,37 +279,33 @@ async function fetchSnapshotProtocolProposals(
   const spaceIds = sourceRefs.map((ref) => ref.sourceId);
   if (!hasDatabase || spaceIds.length === 0) return [];
 
-  try {
-    const db = getDb();
-    const normalizedQ = query.q?.trim();
-    const conditions: (SQL | undefined)[] = [
-      inArray(snapshotProposals.spaceId, spaceIds),
-      eq(snapshotProposals.flagged, false),
-      normalizedQ
-        ? or(ilike(snapshotProposals.title, `%${normalizedQ}%`), ilike(snapshotSpaces.name, `%${normalizedQ}%`))
-        : undefined,
-    ];
+  const db = getDb();
+  const normalizedQ = normalizeSearchQuery(query.q);
+  const conditions: (SQL | undefined)[] = [
+    inArray(snapshotProposals.spaceId, spaceIds),
+    eq(snapshotProposals.flagged, false),
+    normalizedQ
+      ? or(ilike(snapshotProposals.title, containsPattern(normalizedQ)), ilike(snapshotSpaces.name, containsPattern(normalizedQ)))
+      : undefined,
+  ];
 
-    return await db
-      .select({
-        proposal: snapshotProposals,
-        space: {
-          id: snapshotSpaces.id,
-          name: snapshotSpaces.name,
-          avatar: snapshotSpaces.avatar,
-          memberCount: snapshotSpaces.memberCount,
-          website: snapshotSpaces.website,
-          discussions: snapshotSpaces.discussions,
-        },
-      })
-      .from(snapshotProposals)
-      .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-      .where(and(...conditions))
-      .orderBy(desc(snapshotProposals.createdAt))
-      .limit(Math.max(limit + 1, 100));
-  } catch {
-    return [];
-  }
+  return await db
+    .select({
+      proposal: snapshotProposals,
+      space: {
+        id: snapshotSpaces.id,
+        name: snapshotSpaces.name,
+        avatar: snapshotSpaces.avatar,
+        memberCount: snapshotSpaces.memberCount,
+        website: snapshotSpaces.website,
+        discussions: snapshotSpaces.discussions,
+      },
+    })
+    .from(snapshotProposals)
+    .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+    .where(and(...conditions))
+    .orderBy(desc(snapshotProposals.createdAt))
+    .limit(Math.max(limit + 1, 100));
 }
 
 async function fetchTallyProtocolProposals(
@@ -326,39 +316,35 @@ async function fetchTallyProtocolProposals(
   const organizationIds = sourceRefs.filter((ref) => ref.sourceKind === "tally-organization").map((ref) => ref.sourceId);
   if (!hasDatabase || organizationIds.length === 0) return [];
 
-  try {
-    const db = getDb();
-    const normalizedQ = query.q?.trim();
-    const conditions: (SQL | undefined)[] = [
-      inArray(tallyProposals.organizationId, organizationIds),
-      query.chainId ? eq(tallyProposals.chainId, query.chainId) : undefined,
-      normalizedQ
-        ? or(
-            ilike(tallyProposals.title, `%${normalizedQ}%`),
-            ilike(tallyProposals.description, `%${normalizedQ}%`),
-            ilike(tallyProposals.organizationName, `%${normalizedQ}%`)
-          )
-        : undefined,
-    ];
+  const db = getDb();
+  const normalizedQ = normalizeSearchQuery(query.q);
+  const conditions: (SQL | undefined)[] = [
+    inArray(tallyProposals.organizationId, organizationIds),
+    query.chainId ? eq(tallyProposals.chainId, query.chainId) : undefined,
+    normalizedQ
+      ? or(
+          ilike(tallyProposals.title, containsPattern(normalizedQ)),
+          ilike(tallyProposals.description, containsPattern(normalizedQ)),
+          ilike(tallyProposals.organizationName, containsPattern(normalizedQ))
+        )
+      : undefined,
+  ];
 
-    return await db
-      .select({
-        proposal: tallyProposals,
-        organization: {
-          id: tallyOrganizations.id,
-          slug: tallyOrganizations.slug,
-          name: tallyOrganizations.name,
-          icon: tallyOrganizations.icon,
-        },
-      })
-      .from(tallyProposals)
-      .leftJoin(tallyOrganizations, eq(tallyProposals.organizationId, tallyOrganizations.id))
-      .where(and(...conditions))
-      .orderBy(desc(tallyProposals.sourceCreatedAt), desc(tallyProposals.syncedAt))
-      .limit(Math.max(limit + 1, 100));
-  } catch {
-    return [];
-  }
+  return await db
+    .select({
+      proposal: tallyProposals,
+      organization: {
+        id: tallyOrganizations.id,
+        slug: tallyOrganizations.slug,
+        name: tallyOrganizations.name,
+        icon: tallyOrganizations.icon,
+      },
+    })
+    .from(tallyProposals)
+    .leftJoin(tallyOrganizations, eq(tallyProposals.organizationId, tallyOrganizations.id))
+    .where(and(...conditions))
+    .orderBy(desc(tallyProposals.sourceCreatedAt), desc(tallyProposals.syncedAt))
+    .limit(Math.max(limit + 1, 100));
 }
 
 function mapProtocol(record: ProtocolRecord, sourceRefs: GovernanceProtocolSourceRef[]): GovernanceProtocol {
@@ -426,7 +412,7 @@ function mapSnapshotProposal(row: SnapshotProposalRecord, protocol: GovernancePr
     endsAt: fromUnixSeconds(proposal.endTs),
     votesCount: proposal.votesCount,
     quorum: proposal.quorum != null ? String(proposal.quorum) : null,
-    discussionUrl: proposal.discussion || proposalUrl,
+    discussionUrl: safeExternalUrl(proposal.discussion) || proposalUrl,
     proposalUrl,
     sourceUrl: proposalUrl,
     labels: parseStringArray(proposal.labels),
@@ -475,7 +461,7 @@ function mapTallyProposal(row: TallyProposalRecord, protocol: GovernanceProtocol
     endsAt: proposal.endAt?.toISOString() ?? null,
     votesCount: sumTallyVotes(proposal.voteStats),
     quorum: proposal.quorum != null ? String(proposal.quorum) : null,
-    discussionUrl: getMetadataString(proposal.metadata, "discourseURL"),
+    discussionUrl: safeExternalUrl(getMetadataString(proposal.metadata, "discourseURL")),
     proposalUrl,
     sourceUrl: proposalUrl,
     labels: [],

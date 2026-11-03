@@ -5,6 +5,7 @@ import {
   getClientIpFromRequest,
   getThemeGenerateMinIntervalMs,
 } from "@/lib/theme-generate-rate-limit";
+import { sanitizeGeneratedTheme } from "@/lib/theme-sanitize";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
   const slot = consumeThemeGenerateRateSlot(clientIp, minIntervalMs);
   if (!slot.ok) {
     return NextResponse.json(
-      { error: "Too many theme requests from this address. Please wait and try again.", retryAfterSec: slot.retryAfterSec },
+      { error: "Too many theme requests. Please wait and try again.", retryAfterSec: slot.retryAfterSec },
       { status: 429, headers: { "Retry-After": String(slot.retryAfterSec) } }
     );
   }
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
 
   try {
     await themed.init();
-    const theme = await themed.generate(prompt, { autoApply: false, autoSave: false });
+    const theme = sanitizeGeneratedTheme(await themed.generate(prompt, { autoApply: false, autoSave: false }));
     try {
       const ua = request.headers.get("user-agent");
       console.info(

@@ -1,14 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
+
 const DEFAULT_PROPOSAL_LIMIT = 24;
 const PROPOSAL_API_S_MAXAGE_SECONDS = 60;
 const PROPOSAL_API_STALE_WHILE_REVALIDATE_SECONDS = 180;
 
-export async function GET(request: NextRequest) {
+export const GET = safeApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const proposals = await listProposals({
     q: searchParams.get("q") ?? undefined,
@@ -20,7 +25,7 @@ export async function GET(request: NextRequest) {
     translatedOnly: searchParams.get("translatedOnly") === "true",
   });
 
-  return NextResponse.json(
+  return corsJsonResponse(
     { data: proposals },
     {
       headers: {
@@ -28,4 +33,4 @@ export async function GET(request: NextRequest) {
       },
     }
   );
-}
+});

@@ -12,8 +12,11 @@ import {
   tallyOrganizations,
   tallyProposals,
 } from "@/db/drizzle-schema";
-import { getDb, getSql, hasDatabase } from "@/lib/db";
+import { getDb, getSql, hasDatabase, logDbError, withDbFallback } from "@/lib/db";
 import { GOVERNANCE_SOURCES } from "@/lib/governance/sources";
+import { isLocale } from "@/lib/i18n";
+import { containsPattern, normalizeSearchQuery } from "@/lib/search";
+import { safeExternalUrl } from "@/lib/utils";
 import {
   PlatformStats,
   Proposal,
@@ -26,15 +29,6 @@ import {
   TallyProposal,
 } from "@/lib/types";
 import { PLATFORM_STATS_ROW_ID } from "@/lib/platform-stats-refresh";
-
-/**
- * Log a database error with context.
- */
-function logDbError(context: string, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error && error.stack ? `\n${error.stack.split('\n').slice(0, 3).join('\n')}` : '';
-  console.error(`[DB:${context}] ${message}${stack}`);
-}
 
 type ProposalFilters = {
   q?: string;
@@ -174,21 +168,25 @@ type TallyOrganizationRecord = typeof tallyOrganizations.$inferSelect;
 type TallyProposalRecord = typeof tallyProposals.$inferSelect;
 
 export async function listSpaces(query: NormalizedSpaceFilters = {}): Promise<Space[]> {
-  return getCachedSpaces(normalizeSpaceFilters(query));
+  return withDbFallback("listSpaces", () => getCachedSpaces(normalizeSpaceFilters(query)), []);
 }
 
 export const getSpaceBySlug = cache(async (slug: string, locale?: string): Promise<Space | null> => {
-  return getCachedSpaceBySlug(slug, normalizeTranslationLocale(locale));
+  return withDbFallback("getSpaceBySlug", () => getCachedSpaceBySlug(slug, normalizeTranslationLocale(locale)), null);
 });
 
 export async function listProposals(query: ProposalFilters = {}): Promise<Proposal[]> {
   const normalizedQuery = normalizeProposalFilters(query);
-  const records = await getCachedProposals(normalizedQuery);
+  const records = await withDbFallback("listProposals", () => getCachedProposals(normalizedQuery), []);
   return records.map((record) => mapProposal(record, { includeBody: false }));
 }
 
 export const getProposalById = cache(async (id: string, locale?: string): Promise<Proposal | null> => {
-  const record = await getCachedProposalRecord(id, proposalDetailCacheLocale(locale));
+  const record = await withDbFallback(
+    "getProposalById",
+    () => getCachedProposalRecord(id, proposalDetailCacheLocale(locale)),
+    null
+  );
   return record ? mapProposal(record, { includeBody: true }) : null;
 });
 
@@ -207,7 +205,7 @@ export async function getProposalTranslation(
 
 export const getProposalDetail = cache(async (id: string, locale?: string): Promise<ProposalDetail | null> => {
   const cacheLocale = proposalDetailCacheLocale(locale);
-  const record = await getCachedProposalRecord(id, cacheLocale);
+  const record = await withDbFallback("getProposalDetail", () => getCachedProposalRecord(id, cacheLocale), null);
   const proposal = record ? mapProposal(record, { includeBody: true }) : null;
   if (!proposal || !record) return null;
 
@@ -271,7 +269,7 @@ export async function getTallyProposal(id: string): Promise<TallyProposal | null
 }
 
 export async function getPlatformStats(): Promise<PlatformStats> {
-  return getCachedPlatformStats();
+  return withDbFallback("getPlatformStats", () => getCachedPlatformStats(), emptyPlatformStats());
 }
 
 const SPACE_LIST_REVALIDATE_SECONDS = 120;
@@ -366,58 +364,53 @@ const SPACE_SELECT_FIELDS = {
 async function fetchSpaces(query: NormalizedSpaceFilters): Promise<SlimSpaceRecord[]> {
   if (!hasDatabase) return [];
 
-  try {
-    const db = getDb();
-    const locale = query.locale && query.locale !== "en" ? query.locale : null;
+  const db = getDb();
+  const locale = query.locale && query.locale !== "en" ? query.locale : null;
 
-    const categoryJson = query.category && query.category !== "All" ? JSON.stringify([query.category]) : undefined;
-    const conditions: (SQL | undefined)[] = [
-      eq(snapshotSpaces.flagged, false),
-      typeof query.verified === "boolean"
-        ? eq(snapshotSpaces.verified, query.verified)
-        : undefined,
-      query.q ? ilike(snapshotSpaces.name, `%${query.q.trim()}%`) : undefined,
-      categoryJson ? sql`${snapshotSpaces.categories} @> ${categoryJson}::jsonb` : undefined,
-    ];
+  const categoryJson = query.category && query.category !== "All" ? JSON.stringify([query.category]) : undefined;
+  const conditions: (SQL | undefined)[] = [
+    eq(snapshotSpaces.flagged, false),
+    typeof query.verified === "boolean"
+      ? eq(snapshotSpaces.verified, query.verified)
+      : undefined,
+    query.q ? ilike(snapshotSpaces.name, containsPattern(query.q)) : undefined,
+    categoryJson ? sql`${snapshotSpaces.categories} @> ${categoryJson}::jsonb` : undefined,
+  ];
 
-    const orderBy = query.sort === "followers"
-      ? [desc(snapshotSpaces.memberCount), snapshotSpaces.name] as const
-      : [desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name] as const;
+  const orderBy = query.sort === "followers"
+    ? [desc(snapshotSpaces.memberCount), snapshotSpaces.name] as const
+    : [desc(snapshotSpaces.proposalCount), desc(snapshotSpaces.memberCount), snapshotSpaces.name] as const;
 
-    const limit = query.limit ?? 2000;
+  const limit = query.limit ?? 2000;
 
-    let result: SlimSpaceRecord[];
+  let result: SlimSpaceRecord[];
 
-    if (locale) {
-      result = await db
-        .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
-        .from(snapshotSpaces)
-        .leftJoin(
-          spaceTranslations,
-          and(eq(spaceTranslations.spaceId, snapshotSpaces.id), eq(spaceTranslations.locale, locale))
-        )
-        .where(and(...conditions))
-        .orderBy(...orderBy)
-        .limit(limit);
-    } else {
-      result = await db
-        .select(SPACE_SELECT_FIELDS)
-        .from(snapshotSpaces)
-        .where(and(...conditions))
-        .orderBy(...orderBy)
-        .limit(limit);
-    }
-
-    return result;
-  } catch (e) {
-    logDbError("fetchSpaces", e);
-    return [];
+  if (locale) {
+    result = await db
+      .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
+      .from(snapshotSpaces)
+      .leftJoin(
+        spaceTranslations,
+        and(eq(spaceTranslations.spaceId, snapshotSpaces.id), eq(spaceTranslations.locale, locale))
+      )
+      .where(and(...conditions))
+      .orderBy(...orderBy)
+      .limit(limit);
+  } else {
+    result = await db
+      .select(SPACE_SELECT_FIELDS)
+      .from(snapshotSpaces)
+      .where(and(...conditions))
+      .orderBy(...orderBy)
+      .limit(limit);
   }
+
+  return result;
 }
 
 function normalizeSpaceFilters(query: NormalizedSpaceFilters = {}): NormalizedSpaceFilters {
   return {
-    q: normalizeOptionalString(query.q),
+    q: normalizeSearchQuery(query.q),
     category: normalizeOptionalString(query.category),
     verified: typeof query.verified === "boolean" ? query.verified : undefined,
     sort: query.sort === "followers" ? "followers" : "activity",
@@ -437,7 +430,7 @@ function normalizeProposalFilters(query: ProposalFilters = {}): NormalizedPropos
       : undefined;
 
   return {
-    q: normalizeOptionalString(query.q),
+    q: normalizeSearchQuery(query.q),
     status,
     sort: "time",
     spaceSlug: normalizeOptionalString(query.spaceSlug),
@@ -450,33 +443,28 @@ function normalizeProposalFilters(query: ProposalFilters = {}): NormalizedPropos
 async function fetchSpaceBySlug(slug: string, locale?: string): Promise<SlimSpaceRecord | null> {
   if (!hasDatabase) return null;
 
-  try {
-    const db = getDb();
-    const normalizedLocale = locale && locale !== "en" ? locale : null;
+  const db = getDb();
+  const normalizedLocale = locale && locale !== "en" ? locale : null;
 
-    if (normalizedLocale) {
-      const [match] = await db
-        .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
-        .from(snapshotSpaces)
-        .leftJoin(
-          spaceTranslations,
-          and(eq(spaceTranslations.spaceId, snapshotSpaces.id), eq(spaceTranslations.locale, normalizedLocale))
-        )
-        .where(eq(snapshotSpaces.id, slug))
-        .limit(1);
-      return match ?? null;
-    }
-
+  if (normalizedLocale) {
     const [match] = await db
-      .select(SPACE_SELECT_FIELDS)
+      .select({ ...SPACE_SELECT_FIELDS, translatedAbout: spaceTranslations.about })
       .from(snapshotSpaces)
+      .leftJoin(
+        spaceTranslations,
+        and(eq(spaceTranslations.spaceId, snapshotSpaces.id), eq(spaceTranslations.locale, normalizedLocale))
+      )
       .where(eq(snapshotSpaces.id, slug))
       .limit(1);
     return match ?? null;
-  } catch (e) {
-    logDbError("fetchSpaceBySlug", e);
-    return null;
   }
+
+  const [match] = await db
+    .select(SPACE_SELECT_FIELDS)
+    .from(snapshotSpaces)
+    .where(eq(snapshotSpaces.id, slug))
+    .limit(1);
+  return match ?? null;
 }
 
 /**
@@ -486,110 +474,69 @@ async function fetchSpaceBySlug(slug: string, locale?: string): Promise<SlimSpac
 async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimProposalRecord[]> {
   if (!hasDatabase) return [];
 
-  try {
-    if (query.q) {
-      return await fetchSearchedProposals(query);
-    }
+  if (query.q) {
+    return await fetchSearchedProposals(query);
+  }
 
-    const db = getDb();
+  const db = getDb();
 
-    const conditions: (SQL | undefined)[] = [
-      eq(snapshotProposals.flagged, false),
-      eq(snapshotSpaces.flagged, false),
-      query.spaceSlug ? eq(snapshotProposals.spaceId, query.spaceSlug) : undefined,
-      query.status && query.status !== "All"
-        ? query.status === "Executed"
-          ? notInArray(snapshotProposals.state, ["active", "pending", "closed"])
-          : eq(snapshotProposals.state, { Active: "active", Upcoming: "pending", Closed: "closed" }[query.status]!)
-        : query.sort === "expiring"
-          ? eq(snapshotProposals.state, "active")
-          : undefined,
-    ];
+  const conditions: (SQL | undefined)[] = [
+    eq(snapshotProposals.flagged, false),
+    eq(snapshotSpaces.flagged, false),
+    query.spaceSlug ? eq(snapshotProposals.spaceId, query.spaceSlug) : undefined,
+    query.status && query.status !== "All"
+      ? query.status === "Executed"
+        ? notInArray(snapshotProposals.state, ["active", "pending", "closed"])
+        : eq(snapshotProposals.state, { Active: "active", Upcoming: "pending", Closed: "closed" }[query.status]!)
+      : query.sort === "expiring"
+        ? eq(snapshotProposals.state, "active")
+        : undefined,
+  ];
 
-    const normalizedLocale = normalizeTranslationLocale(query.locale);
-    const baseQuery =
-      normalizedLocale && normalizedLocale !== "en"
-        ? query.translatedOnly
-          ? db
-              .select({
-                proposal: {
-                  id: snapshotProposals.id,
-                  spaceId: snapshotProposals.spaceId,
-                  title: snapshotProposals.title,
-                  author: snapshotProposals.author,
-                  createdTs: snapshotProposals.createdTs,
-                  endTs: snapshotProposals.endTs,
-                  type: snapshotProposals.type,
-                  labels: snapshotProposals.labels,
-                  quorum: snapshotProposals.quorum,
-                  quorumType: snapshotProposals.quorumType,
-                  app: snapshotProposals.app,
-                  discussion: snapshotProposals.discussion,
-                  scoresTotal: snapshotProposals.scoresTotal,
-                  votesCount: snapshotProposals.votesCount,
-                  state: snapshotProposals.state,
-                },
-                space: {
-                  id: snapshotSpaces.id,
-                  name: snapshotSpaces.name,
-                  avatar: snapshotSpaces.avatar,
-                  memberCount: snapshotSpaces.memberCount,
-                },
-                translation: {
-                  title: proposalTranslations.title,
-                  summary: proposalTranslations.summary,
-                },
-              })
-              .from(snapshotProposals)
-              .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-              .innerJoin(
-                proposalTranslations,
-                and(
-                  eq(proposalTranslations.proposalId, snapshotProposals.id),
-                  eq(proposalTranslations.locale, normalizedLocale)
-                )
+  const normalizedLocale = normalizeTranslationLocale(query.locale);
+  const baseQuery =
+    normalizedLocale && normalizedLocale !== "en"
+      ? query.translatedOnly
+        ? db
+            .select({
+              proposal: {
+                id: snapshotProposals.id,
+                spaceId: snapshotProposals.spaceId,
+                title: snapshotProposals.title,
+                author: snapshotProposals.author,
+                createdTs: snapshotProposals.createdTs,
+                endTs: snapshotProposals.endTs,
+                type: snapshotProposals.type,
+                labels: snapshotProposals.labels,
+                quorum: snapshotProposals.quorum,
+                quorumType: snapshotProposals.quorumType,
+                app: snapshotProposals.app,
+                discussion: snapshotProposals.discussion,
+                scoresTotal: snapshotProposals.scoresTotal,
+                votesCount: snapshotProposals.votesCount,
+                state: snapshotProposals.state,
+              },
+              space: {
+                id: snapshotSpaces.id,
+                name: snapshotSpaces.name,
+                avatar: snapshotSpaces.avatar,
+                memberCount: snapshotSpaces.memberCount,
+              },
+              translation: {
+                title: proposalTranslations.title,
+                summary: proposalTranslations.summary,
+              },
+            })
+            .from(snapshotProposals)
+            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+            .innerJoin(
+              proposalTranslations,
+              and(
+                eq(proposalTranslations.proposalId, snapshotProposals.id),
+                eq(proposalTranslations.locale, normalizedLocale)
               )
-              .where(and(...conditions))
-          : db
-              .select({
-                proposal: {
-                  id: snapshotProposals.id,
-                  spaceId: snapshotProposals.spaceId,
-                  title: snapshotProposals.title,
-                  author: snapshotProposals.author,
-                  createdTs: snapshotProposals.createdTs,
-                  endTs: snapshotProposals.endTs,
-                  type: snapshotProposals.type,
-                  labels: snapshotProposals.labels,
-                  quorum: snapshotProposals.quorum,
-                  quorumType: snapshotProposals.quorumType,
-                  app: snapshotProposals.app,
-                  discussion: snapshotProposals.discussion,
-                  scoresTotal: snapshotProposals.scoresTotal,
-                  votesCount: snapshotProposals.votesCount,
-                  state: snapshotProposals.state,
-                },
-                space: {
-                  id: snapshotSpaces.id,
-                  name: snapshotSpaces.name,
-                  avatar: snapshotSpaces.avatar,
-                  memberCount: snapshotSpaces.memberCount,
-                },
-                translation: {
-                  title: proposalTranslations.title,
-                  summary: proposalTranslations.summary,
-                },
-              })
-              .from(snapshotProposals)
-              .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-              .leftJoin(
-                proposalTranslations,
-                and(
-                  eq(proposalTranslations.proposalId, snapshotProposals.id),
-                  eq(proposalTranslations.locale, normalizedLocale)
-                )
-              )
-              .where(and(...conditions))
+            )
+            .where(and(...conditions))
         : db
             .select({
               proposal: {
@@ -615,33 +562,69 @@ async function fetchProposals(query: NormalizedProposalFilters): Promise<SlimPro
                 avatar: snapshotSpaces.avatar,
                 memberCount: snapshotSpaces.memberCount,
               },
-              translation: sql<null>`null`,
+              translation: {
+                title: proposalTranslations.title,
+                summary: proposalTranslations.summary,
+              },
             })
             .from(snapshotProposals)
             .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-            .where(and(...conditions));
+            .leftJoin(
+              proposalTranslations,
+              and(
+                eq(proposalTranslations.proposalId, snapshotProposals.id),
+                eq(proposalTranslations.locale, normalizedLocale)
+              )
+            )
+            .where(and(...conditions))
+      : db
+          .select({
+            proposal: {
+              id: snapshotProposals.id,
+              spaceId: snapshotProposals.spaceId,
+              title: snapshotProposals.title,
+              author: snapshotProposals.author,
+              createdTs: snapshotProposals.createdTs,
+              endTs: snapshotProposals.endTs,
+              type: snapshotProposals.type,
+              labels: snapshotProposals.labels,
+              quorum: snapshotProposals.quorum,
+              quorumType: snapshotProposals.quorumType,
+              app: snapshotProposals.app,
+              discussion: snapshotProposals.discussion,
+              scoresTotal: snapshotProposals.scoresTotal,
+              votesCount: snapshotProposals.votesCount,
+              state: snapshotProposals.state,
+            },
+            space: {
+              id: snapshotSpaces.id,
+              name: snapshotSpaces.name,
+              avatar: snapshotSpaces.avatar,
+              memberCount: snapshotSpaces.memberCount,
+            },
+            translation: sql<null>`null`,
+          })
+          .from(snapshotProposals)
+          .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+          .where(and(...conditions));
 
-    const orderedQuery = query.sort === "expiring"
-      ? baseQuery.orderBy(asc(snapshotProposals.endTs))
-      : baseQuery.orderBy(desc(snapshotProposals.createdAt));
+  const orderedQuery = query.sort === "expiring"
+    ? baseQuery.orderBy(asc(snapshotProposals.endTs))
+    : baseQuery.orderBy(desc(snapshotProposals.createdAt));
 
-    const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
-    let result: SlimProposalRecord[];
-    if (limit) {
-      result = await orderedQuery.limit(limit);
-    } else {
-      result = await orderedQuery;
-    }
-
-    return result;
-  } catch (e) {
-    logDbError("fetchProposals", e);
-    return [];
+  const limit = typeof query.limit === "number" ? normalizeLimit(query.limit, 200) : undefined;
+  let result: SlimProposalRecord[];
+  if (limit) {
+    result = await orderedQuery.limit(limit);
+  } else {
+    result = await orderedQuery;
   }
+
+  return result;
 }
 
 async function fetchSearchedProposals(query: NormalizedProposalFilters): Promise<SlimProposalRecord[]> {
-  const searchTerm = normalizeOptionalString(query.q);
+  const searchTerm = normalizeSearchQuery(query.q);
   if (!searchTerm) return [];
 
   const params: unknown[] = [];
@@ -650,7 +633,7 @@ async function fetchSearchedProposals(query: NormalizedProposalFilters): Promise
     return `$${params.length}`;
   };
 
-  const patternParam = addParam(`%${searchTerm}%`);
+  const patternParam = addParam(containsPattern(searchTerm));
   const candidateLimitParam = addParam(getProposalSearchCandidateLimit(query.limit));
   const spaceCandidateLimitParam = addParam(100);
   const limitParam = addParam(normalizeLimit(query.limit, 200));
@@ -822,91 +805,86 @@ function mapProposalSearchRow(row: ProposalSearchRow): SlimProposalRecord {
 async function fetchProposalById(id: string, locale?: string): Promise<ProposalRecord | null> {
   if (!hasDatabase) return null;
 
-  try {
-    const db = getDb();
-    const normalizedLocale = normalizeTranslationLocale(locale);
-    const [record] =
-      normalizedLocale && normalizedLocale !== "en"
-        ? await db
-            .select({
-              proposal: {
-                id: snapshotProposals.id,
-                spaceId: snapshotProposals.spaceId,
-                title: snapshotProposals.title,
-                body: snapshotProposals.body,
-                state: snapshotProposals.state,
-                author: snapshotProposals.author,
-                createdTs: snapshotProposals.createdTs,
-                endTs: snapshotProposals.endTs,
-                votesCount: snapshotProposals.votesCount,
-                type: snapshotProposals.type,
-                labels: snapshotProposals.labels,
-                quorum: snapshotProposals.quorum,
-                quorumType: snapshotProposals.quorumType,
-                app: snapshotProposals.app,
-                discussion: snapshotProposals.discussion,
-                flagged: snapshotProposals.flagged,
-                scores: snapshotProposals.scores,
-                scoresTotal: snapshotProposals.scoresTotal,
-                choices: snapshotProposals.choices,
-              },
-              space: {
-                id: snapshotSpaces.id,
-                name: snapshotSpaces.name,
-                avatar: snapshotSpaces.avatar,
-              },
-              translation: proposalTranslations,
-            })
-            .from(snapshotProposals)
-            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-            .leftJoin(
-              proposalTranslations,
-              and(
-                eq(proposalTranslations.proposalId, snapshotProposals.id),
-                eq(proposalTranslations.locale, normalizedLocale)
-              )
+  const db = getDb();
+  const normalizedLocale = normalizeTranslationLocale(locale);
+  const [record] =
+    normalizedLocale && normalizedLocale !== "en"
+      ? await db
+          .select({
+            proposal: {
+              id: snapshotProposals.id,
+              spaceId: snapshotProposals.spaceId,
+              title: snapshotProposals.title,
+              body: snapshotProposals.body,
+              state: snapshotProposals.state,
+              author: snapshotProposals.author,
+              createdTs: snapshotProposals.createdTs,
+              endTs: snapshotProposals.endTs,
+              votesCount: snapshotProposals.votesCount,
+              type: snapshotProposals.type,
+              labels: snapshotProposals.labels,
+              quorum: snapshotProposals.quorum,
+              quorumType: snapshotProposals.quorumType,
+              app: snapshotProposals.app,
+              discussion: snapshotProposals.discussion,
+              flagged: snapshotProposals.flagged,
+              scores: snapshotProposals.scores,
+              scoresTotal: snapshotProposals.scoresTotal,
+              choices: snapshotProposals.choices,
+            },
+            space: {
+              id: snapshotSpaces.id,
+              name: snapshotSpaces.name,
+              avatar: snapshotSpaces.avatar,
+            },
+            translation: proposalTranslations,
+          })
+          .from(snapshotProposals)
+          .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+          .leftJoin(
+            proposalTranslations,
+            and(
+              eq(proposalTranslations.proposalId, snapshotProposals.id),
+              eq(proposalTranslations.locale, normalizedLocale)
             )
-            .where(eq(snapshotProposals.id, id))
-            .limit(1)
-        : await db
-            .select({
-              proposal: {
-                id: snapshotProposals.id,
-                spaceId: snapshotProposals.spaceId,
-                title: snapshotProposals.title,
-                body: snapshotProposals.body,
-                state: snapshotProposals.state,
-                author: snapshotProposals.author,
-                createdTs: snapshotProposals.createdTs,
-                endTs: snapshotProposals.endTs,
-                votesCount: snapshotProposals.votesCount,
-                type: snapshotProposals.type,
-                labels: snapshotProposals.labels,
-                quorum: snapshotProposals.quorum,
-                quorumType: snapshotProposals.quorumType,
-                app: snapshotProposals.app,
-                discussion: snapshotProposals.discussion,
-                flagged: snapshotProposals.flagged,
-                scores: snapshotProposals.scores,
-                scoresTotal: snapshotProposals.scoresTotal,
-                choices: snapshotProposals.choices,
-              },
-              space: {
-                id: snapshotSpaces.id,
-                name: snapshotSpaces.name,
-                avatar: snapshotSpaces.avatar,
-              },
-              translation: sql<null>`null`,
-            })
-            .from(snapshotProposals)
-            .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
-            .where(eq(snapshotProposals.id, id))
-            .limit(1);
-    return (record as unknown as ProposalRecord) ?? null;
-  } catch (e) {
-    logDbError("fetchProposalById", e);
-    return null;
-  }
+          )
+          .where(eq(snapshotProposals.id, id))
+          .limit(1)
+      : await db
+          .select({
+            proposal: {
+              id: snapshotProposals.id,
+              spaceId: snapshotProposals.spaceId,
+              title: snapshotProposals.title,
+              body: snapshotProposals.body,
+              state: snapshotProposals.state,
+              author: snapshotProposals.author,
+              createdTs: snapshotProposals.createdTs,
+              endTs: snapshotProposals.endTs,
+              votesCount: snapshotProposals.votesCount,
+              type: snapshotProposals.type,
+              labels: snapshotProposals.labels,
+              quorum: snapshotProposals.quorum,
+              quorumType: snapshotProposals.quorumType,
+              app: snapshotProposals.app,
+              discussion: snapshotProposals.discussion,
+              flagged: snapshotProposals.flagged,
+              scores: snapshotProposals.scores,
+              scoresTotal: snapshotProposals.scoresTotal,
+              choices: snapshotProposals.choices,
+            },
+            space: {
+              id: snapshotSpaces.id,
+              name: snapshotSpaces.name,
+              avatar: snapshotSpaces.avatar,
+            },
+            translation: sql<null>`null`,
+          })
+          .from(snapshotProposals)
+          .innerJoin(snapshotSpaces, eq(snapshotProposals.spaceId, snapshotSpaces.id))
+          .where(eq(snapshotProposals.id, id))
+          .limit(1);
+  return (record as unknown as ProposalRecord) ?? null;
 }
 
 async function fetchProposalTranslations(
@@ -977,10 +955,10 @@ async function fetchTallyOrganizations(query: TallyOrganizationFilters = {}): Pr
   try {
     const db = getDb();
     const conditions: SQL[] = [];
-    const normalizedQ = normalizeOptionalString(query.q);
+    const normalizedQ = normalizeSearchQuery(query.q);
 
     if (normalizedQ) {
-      conditions.push(or(ilike(tallyOrganizations.name, `%${normalizedQ}%`), ilike(tallyOrganizations.slug, `%${normalizedQ}%`))!);
+      conditions.push(or(ilike(tallyOrganizations.name, containsPattern(normalizedQ)), ilike(tallyOrganizations.slug, containsPattern(normalizedQ)))!);
     }
 
     if (typeof query.hasActiveProposals === "boolean") {
@@ -1022,7 +1000,7 @@ async function fetchTallyProposals(query: TallyProposalFilters = {}): Promise<Ta
   try {
     const db = getDb();
     const conditions: SQL[] = [];
-    const normalizedQ = normalizeOptionalString(query.q);
+    const normalizedQ = normalizeSearchQuery(query.q);
     const normalizedStatus = normalizeOptionalString(query.status);
 
     if (query.organizationId) {
@@ -1044,9 +1022,9 @@ async function fetchTallyProposals(query: TallyProposalFilters = {}): Promise<Ta
     if (normalizedQ) {
       conditions.push(
         or(
-          ilike(tallyProposals.title, `%${normalizedQ}%`),
-          ilike(tallyProposals.organizationName, `%${normalizedQ}%`),
-          ilike(tallyProposals.description, `%${normalizedQ}%`)
+          ilike(tallyProposals.title, containsPattern(normalizedQ)),
+          ilike(tallyProposals.organizationName, containsPattern(normalizedQ)),
+          ilike(tallyProposals.description, containsPattern(normalizedQ))
         )!
       );
     }
@@ -1101,74 +1079,70 @@ async function fetchPlatformStats(): Promise<PlatformStats> {
     // Fall through to live counts for deployments that have not run the stats migration yet.
   }
 
-  try {
-    const [
-      spacesSummaryRows,
-      proposalsSummaryRows,
-      translationsSummaryRows,
-      translationLocaleRows,
-      syncStateRows,
-    ] = await Promise.all([
-      db
-        .select({
-          spacesCount: sql<number>`count(*)::int`,
-          verifiedSpacesCount: sql<number>`count(*) filter (where ${snapshotSpaces.verified})::int`,
-        })
-        .from(snapshotSpaces),
-      db
-        .select({
-          proposalsCount: sql<number>`count(*)::int`,
-          activeProposalsCount: sql<number>`count(*) filter (where ${snapshotProposals.state} = 'active')::int`,
-        })
-        .from(snapshotProposals),
-      db
-        .select({
-          translationsCount: sql<number>`count(*)::int`,
-          translatedProposalsCount: sql<number>`count(distinct ${proposalTranslations.proposalId})::int`,
-        })
-        .from(proposalTranslations),
-      db
-        .select({
-          locale: proposalTranslations.locale,
-          count: sql<number>`count(*)::int`,
-        })
-        .from(proposalTranslations)
-        .groupBy(proposalTranslations.locale),
-      db
-        .select({
-          entityType: snapshotSyncState.entityType,
-          lastSuccessAt: snapshotSyncState.lastSuccessAt,
-        })
-        .from(snapshotSyncState)
-        .where(inArray(snapshotSyncState.entityType, ["spaces", "proposals"])),
-    ]);
+  const [
+    spacesSummaryRows,
+    proposalsSummaryRows,
+    translationsSummaryRows,
+    translationLocaleRows,
+    syncStateRows,
+  ] = await Promise.all([
+    db
+      .select({
+        spacesCount: sql<number>`count(*)::int`,
+        verifiedSpacesCount: sql<number>`count(*) filter (where ${snapshotSpaces.verified})::int`,
+      })
+      .from(snapshotSpaces),
+    db
+      .select({
+        proposalsCount: sql<number>`count(*)::int`,
+        activeProposalsCount: sql<number>`count(*) filter (where ${snapshotProposals.state} = 'active')::int`,
+      })
+      .from(snapshotProposals),
+    db
+      .select({
+        translationsCount: sql<number>`count(*)::int`,
+        translatedProposalsCount: sql<number>`count(distinct ${proposalTranslations.proposalId})::int`,
+      })
+      .from(proposalTranslations),
+    db
+      .select({
+        locale: proposalTranslations.locale,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(proposalTranslations)
+      .groupBy(proposalTranslations.locale),
+    db
+      .select({
+        entityType: snapshotSyncState.entityType,
+        lastSuccessAt: snapshotSyncState.lastSuccessAt,
+      })
+      .from(snapshotSyncState)
+      .where(inArray(snapshotSyncState.entityType, ["spaces", "proposals"])),
+  ]);
 
-    const spacesSummary = spacesSummaryRows[0];
-    const proposalsSummary = proposalsSummaryRows[0];
-    const translationsSummary = translationsSummaryRows[0];
+  const spacesSummary = spacesSummaryRows[0];
+  const proposalsSummary = proposalsSummaryRows[0];
+  const translationsSummary = translationsSummaryRows[0];
 
-    const translationLocaleCounts = Object.fromEntries(
-      translationLocaleRows.map((row) => [row.locale, row.count ?? 0])
-    );
+  const translationLocaleCounts = Object.fromEntries(
+    translationLocaleRows.map((row) => [row.locale, row.count ?? 0])
+  );
 
-    const syncStateMap = new Map(
-      syncStateRows.map((row) => [row.entityType, row.lastSuccessAt?.toISOString() ?? null] as const)
-    );
+  const syncStateMap = new Map(
+    syncStateRows.map((row) => [row.entityType, row.lastSuccessAt?.toISOString() ?? null] as const)
+  );
 
-    return {
-      spacesCount: spacesSummary?.spacesCount ?? 0,
-      verifiedSpacesCount: spacesSummary?.verifiedSpacesCount ?? 0,
-      proposalsCount: proposalsSummary?.proposalsCount ?? 0,
-      activeProposalsCount: proposalsSummary?.activeProposalsCount ?? 0,
-      translatedProposalsCount: translationsSummary?.translatedProposalsCount ?? 0,
-      translationsCount: translationsSummary?.translationsCount ?? 0,
-      translationLocaleCounts,
-      lastSuccessfulSpaceSyncAt: syncStateMap.get("spaces") ?? null,
-      lastSuccessfulProposalSyncAt: syncStateMap.get("proposals") ?? null,
-    };
-  } catch (e) {
-    return emptyPlatformStats();
-  }
+  return {
+    spacesCount: spacesSummary?.spacesCount ?? 0,
+    verifiedSpacesCount: spacesSummary?.verifiedSpacesCount ?? 0,
+    proposalsCount: proposalsSummary?.proposalsCount ?? 0,
+    activeProposalsCount: proposalsSummary?.activeProposalsCount ?? 0,
+    translatedProposalsCount: translationsSummary?.translatedProposalsCount ?? 0,
+    translationsCount: translationsSummary?.translationsCount ?? 0,
+    translationLocaleCounts,
+    lastSuccessfulSpaceSyncAt: syncStateMap.get("spaces") ?? null,
+    lastSuccessfulProposalSyncAt: syncStateMap.get("proposals") ?? null,
+  };
 }
 
 function mapPlatformStats(record: PlatformStatsRecord): PlatformStats {
@@ -1208,8 +1182,8 @@ function mapSpace(space: SlimSpaceRecord): Space {
     votes: space.votesCount || 0,
     categories,
     activityScore: computeActivityScore(space.followersCount || space.memberCount, space.proposalCount),
-    website: space.website || snapshotUrl,
-    forum: space.discussions || snapshotUrl,
+    website: safeExternalUrl(space.website) || snapshotUrl,
+    forum: safeExternalUrl(space.discussions) || snapshotUrl,
     twitter: space.twitter ?? null,
     github: space.github ?? null,
     coingecko: space.coingecko ?? null,
@@ -1242,7 +1216,7 @@ function mapProposal(
     spaceAvatar: resolveIpfsUrl(space.avatar),
     author,
     authorProfileUrl: getSnapshotProfileUrl(author),
-    status: mapProposalStatus(proposal.state),
+    status: mapProposalStatus(proposal.state, proposal.endTs),
     publishedAt: fromUnixSeconds(proposal.createdTs),
     closesAt: fromUnixSeconds(proposal.endTs),
     endTs: proposal.endTs != null ? Number(proposal.endTs) : null,
@@ -1252,11 +1226,11 @@ function mapProposal(
     quorum: proposal.quorum != null ? Number(proposal.quorum) : null,
     quorumType: proposal.quorumType ?? null,
     app: proposal.app ?? null,
-    discussion: proposal.discussion || null,
+    discussion: safeExternalUrl(proposal.discussion),
     flagged: "flagged" in proposal ? proposal.flagged : false,
     summary,
     body: options.includeBody ? rawTranslatedBody || ("body" in proposal ? proposal.body || null : null) : null,
-    discussionUrl: proposal.discussion || proposalUrl,
+    discussionUrl: safeExternalUrl(proposal.discussion) || proposalUrl,
     proposalUrl,
   };
 }
@@ -1395,8 +1369,12 @@ function computeActivityScore(memberCount: number, proposalCount: number) {
 }
 
 
-function mapProposalStatus(state: string): ProposalStatus {
+function mapProposalStatus(state: string, endTs?: number | string | null): ProposalStatus {
   const normalized = state.toLowerCase();
+  // A stored active/pending row whose voting window has passed is just waiting for the next
+  // sync to pick up Snapshot's final state; show it as closed rather than still running.
+  const ended = endTs != null && Number(endTs) * 1000 < Date.now();
+  if ((normalized === "active" || normalized === "pending") && ended) return "Closed";
   if (normalized === "active") return "Active";
   if (normalized === "pending") return "Upcoming";
   if (normalized === "closed") return "Closed";
@@ -1429,7 +1407,8 @@ function normalizeTranslationLocale(value: string | null | undefined) {
   if (normalized === "zh-cn" || normalized === "zh_hans" || normalized === "zh-hans") {
     return "zh";
   }
-  return normalized;
+  // Unknown locales fall back to English instead of fanning out cache keys and translation joins.
+  return isLocale(normalized) ? normalized : undefined;
 }
 
 function normalizeTallySyncEntityType(value: string) {

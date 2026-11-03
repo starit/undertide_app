@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
-import { parseLimitParam, parseProtocolSourceParam, parseTextParam } from "@/lib/governance/api";
+import { parseLimitParam, parseProtocolSourceParam } from "@/lib/governance/api";
 import { listGovernanceProtocols } from "@/lib/governance/repository";
+import { normalizeSearchQuery } from "@/lib/search";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export const GET = safeApiHandler(async (request: NextRequest) => {
   if (!limit.ok) return limit.response;
 
   const response = await listGovernanceProtocols({
-    q: parseTextParam(searchParams, "q"),
+    q: normalizeSearchQuery(searchParams.get("q")),
     source: source.value,
     limit: limit.value,
   });

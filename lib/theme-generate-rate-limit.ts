@@ -1,5 +1,7 @@
 /** IP → last successful rate-check timestamp (ms). In-memory; resets per Node process (serverless cold start). */
 const lastAllowedAt = new Map<string, number>();
+/** Timestamps (ms) of every admitted request in the last minute, across all IPs. */
+const recentAdmissions: number[] = [];
 
 const PRUNE_THRESHOLD = 2000;
 const STALE_MULTIPLIER = 24;
@@ -16,14 +18,28 @@ export function getThemeGenerateMinIntervalMs(): number {
   return parseMinIntervalMs();
 }
 
+/** Per-instance ceiling on paid LLM calls, regardless of how many distinct IPs ask. */
+function parseMaxPerMinute(): number {
+  const raw = process.env.THEME_GENERATE_MAX_PER_MINUTE?.trim();
+  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 20;
+}
+
+/**
+ * Client IP for rate limiting. Prefers headers the hosting proxy sets itself (Vercel
+ * overwrites `x-real-ip` / `x-vercel-forwarded-for`); for `x-forwarded-for` the last hop
+ * is used, since that is the one appended by the nearest proxy rather than the client.
+ */
 export function getClientIpFromRequest(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
   const realIp = request.headers.get("x-real-ip")?.trim();
   if (realIp) return realIp;
+  const vercelForwarded = request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim();
+  if (vercelForwarded) return vercelForwarded;
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const last = forwarded.split(",").pop()?.trim();
+    if (last) return last;
+  }
   return "unknown";
 }
 
@@ -36,7 +52,8 @@ function pruneStale(now: number, minIntervalMs: number): void {
 }
 
 /**
- * Enforces at most one theme generation attempt per IP per `minIntervalMs`.
+ * Enforces at most one theme generation attempt per IP per `minIntervalMs`, and at most
+ * THEME_GENERATE_MAX_PER_MINUTE attempts per instance overall.
  * Records timestamp when the slot is consumed (before calling the LLM).
  */
 export function consumeThemeGenerateRateSlot(
@@ -51,6 +68,13 @@ export function consumeThemeGenerateRateSlot(
     const retryAfterMs = minIntervalMs - elapsed;
     return { ok: false, retryAfterSec: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
   }
+
+  while (recentAdmissions.length > 0 && recentAdmissions[0] <= now - 60_000) recentAdmissions.shift();
+  if (recentAdmissions.length >= parseMaxPerMinute()) {
+    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((recentAdmissions[0] + 60_000 - now) / 1000)) };
+  }
+
   lastAllowedAt.set(ip, now);
+  recentAdmissions.push(now);
   return { ok: true };
 }

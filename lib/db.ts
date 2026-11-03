@@ -47,3 +47,26 @@ export function getDb() {
 
   return globalForDb.__undertideDb;
 }
+
+/**
+ * Log a database error with context.
+ */
+export function logDbError(context: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error && error.stack ? `\n${error.stack.split("\n").slice(0, 3).join("\n")}` : "";
+  console.error(`[DB:${context}] ${message}${stack}`);
+}
+
+/**
+ * Run a (usually unstable_cache-wrapped) read and degrade to `fallback` on a DB error.
+ * Fetchers called inside unstable_cache must throw rather than return empty values,
+ * otherwise a transient error is cached as a real empty result for the whole TTL.
+ */
+export async function withDbFallback<T>(context: string, read: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    logDbError(context, error);
+    return fallback;
+  }
+}

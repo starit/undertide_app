@@ -1,14 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listSpaces } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
+
 const DEFAULT_SPACE_LIMIT = 200;
 const SPACE_API_S_MAXAGE_SECONDS = 120;
 const SPACE_API_STALE_WHILE_REVALIDATE_SECONDS = 300;
 
-export async function GET(request: NextRequest) {
+export const GET = safeApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const spaces = await listSpaces({
     q: searchParams.get("q") ?? undefined,
@@ -19,7 +24,7 @@ export async function GET(request: NextRequest) {
     locale: searchParams.get("locale") ?? undefined,
   });
 
-  return NextResponse.json(
+  return corsJsonResponse(
     { data: spaces },
     {
       headers: {
@@ -27,4 +32,4 @@ export async function GET(request: NextRequest) {
       },
     }
   );
-}
+});

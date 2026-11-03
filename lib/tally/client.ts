@@ -1,7 +1,11 @@
 export const DEFAULT_TALLY_API_URL = "https://api.tally.xyz/query";
 
-const DEFAULT_RETRY_LIMIT = 4;
+const DEFAULT_RETRY_LIMIT = 5;
 const DEFAULT_RETRY_BASE_MS = 1500;
+/** Base backoff after a 429 when Tally sends no Retry-After; doubles per attempt (5s … 80s). */
+const RATE_LIMIT_RETRY_BASE_MS = 5000;
+/** Tally's API is rate limited per key (about one request per second on the default plan). */
+const DEFAULT_MIN_REQUEST_INTERVAL_MS = 1000;
 
 export type TallyPageInfo = {
   firstCursor: string | null;
@@ -75,6 +79,7 @@ type TallyClientOptions = {
   apiUrl?: string;
   retryLimit?: number;
   retryBaseMs?: number;
+  minRequestIntervalMs?: number;
 };
 
 type TallySort = {
@@ -118,16 +123,28 @@ export function createTallyClient({
   apiUrl = DEFAULT_TALLY_API_URL,
   retryLimit = DEFAULT_RETRY_LIMIT,
   retryBaseMs = DEFAULT_RETRY_BASE_MS,
+  minRequestIntervalMs = DEFAULT_MIN_REQUEST_INTERVAL_MS,
 }: TallyClientOptions) {
   if (!apiKey.trim()) {
     throw new Error("TALLY_API_KEY is required.");
+  }
+
+  let nextRequestAt = 0;
+
+  // Space requests out so a sync stays under the per-key rate limit instead of hitting 429s.
+  async function throttle() {
+    const wait = nextRequestAt - Date.now();
+    if (wait > 0) await sleep(wait);
+    nextRequestAt = Date.now() + minRequestIntervalMs;
   }
 
   async function request<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= retryLimit; attempt += 1) {
+      let retryDelayMs = retryBaseMs * 2 ** attempt;
       try {
+        await throttle();
         const response = await fetch(apiUrl, {
           method: "POST",
           headers: {
@@ -136,6 +153,11 @@ export function createTallyClient({
           },
           body: JSON.stringify({ query, variables }),
         });
+
+        if (response.status === 429) {
+          const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+          retryDelayMs = Math.max(retryAfterMs ?? 0, RATE_LIMIT_RETRY_BASE_MS * 2 ** attempt);
+        }
 
         if (!response.ok) {
           throw new Error(`Tally API request failed: ${response.status} ${response.statusText}`);
@@ -157,7 +179,7 @@ export function createTallyClient({
           break;
         }
 
-        await sleep(retryBaseMs * 2 ** attempt);
+        await sleep(retryDelayMs);
       }
     }
 
@@ -309,6 +331,14 @@ const TALLY_PROPOSALS_QUERY = `
     }
   }
 `;
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

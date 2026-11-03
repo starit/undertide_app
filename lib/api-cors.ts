@@ -36,6 +36,9 @@ export function corsJsonResponse(
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     headers.set(key, value);
   }
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   return new Response(JSON.stringify(body), {
     ...init,
     status: init?.status ?? 200,
@@ -58,7 +61,6 @@ export function safeApiHandler<T extends (...args: any[]) => Promise<Response>>(
     try {
       return await handler(request, ...args);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Internal server error";
       console.error("[api] unhandled error:", error);
       return corsJsonResponse(
         { error: "Internal server error", status: 500 },

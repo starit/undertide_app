@@ -9,6 +9,7 @@ import {
   parseTextParam,
 } from "@/lib/governance/api";
 import { listGovernanceProtocolProposals } from "@/lib/governance/repository";
+import { normalizeSearchQuery } from "@/lib/search";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,7 @@ export const GET = safeApiHandler(async (request: NextRequest, { params }: { par
   if (!limit.ok) return limit.response;
 
   const response = await listGovernanceProtocolProposals(parsedId.value, {
-    q: parseTextParam(searchParams, "q"),
+    q: normalizeSearchQuery(searchParams.get("q")),
     source: source.value,
     statusGroup: statusGroup.value,
     status: parseTextParam(searchParams, "status"),

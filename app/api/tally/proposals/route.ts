@@ -1,14 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { parseLimitParamSafe } from "@/lib/governance/api";
 import { listTallyProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
+
 const DEFAULT_TALLY_PROPOSAL_LIMIT = 100;
 const TALLY_API_S_MAXAGE_SECONDS = 60;
 const TALLY_API_STALE_WHILE_REVALIDATE_SECONDS = 180;
 
-export async function GET(request: NextRequest) {
+export const GET = safeApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const proposals = await listTallyProposals({
     q: searchParams.get("q") ?? undefined,
@@ -19,7 +24,7 @@ export async function GET(request: NextRequest) {
     limit: parseLimitParamSafe(searchParams, DEFAULT_TALLY_PROPOSAL_LIMIT),
   });
 
-  return NextResponse.json(
+  return corsJsonResponse(
     { data: proposals },
     {
       headers: {
@@ -27,4 +32,4 @@ export async function GET(request: NextRequest) {
       },
     }
   );
-}
+});

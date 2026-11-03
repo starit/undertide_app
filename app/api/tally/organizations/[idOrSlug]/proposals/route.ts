@@ -1,17 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJsonResponse, handleCorsPreflight, safeApiHandler } from "@/lib/api-cors";
 import { parseLimitParamSafe } from "@/lib/governance/api";
 import { getTallyOrganization, listTallyProposals } from "@/lib/repository";
 
 export const runtime = "nodejs";
 
+export async function OPTIONS() {
+  return handleCorsPreflight();
+}
+
 const DEFAULT_TALLY_PROPOSAL_LIMIT = 100;
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ idOrSlug: string }> }) {
+export const GET = safeApiHandler(async (request: NextRequest, { params }: { params: Promise<{ idOrSlug: string }> }) => {
   const { idOrSlug } = await params;
   const organization = await getTallyOrganization(idOrSlug);
 
   if (!organization) {
-    return NextResponse.json({ error: "Tally organization not found", status: 404 }, { status: 404 });
+    return corsJsonResponse({ error: "Tally organization not found", status: 404 }, { status: 404 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -23,5 +28,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     limit: parseLimitParamSafe(searchParams, DEFAULT_TALLY_PROPOSAL_LIMIT),
   });
 
-  return NextResponse.json({ data: proposals });
-}
+  return corsJsonResponse({ data: proposals });
+});
