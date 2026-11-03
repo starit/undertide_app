@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
-import { eq, inArray, sql as drizzleSql } from "drizzle-orm";
+import { eq, getTableColumns, getTableName, inArray, sql as drizzleSql, type SQL } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/neon-http";
 import {
   snapshotProposals,
@@ -201,6 +202,23 @@ export async function withDatabaseRetry<T>(label: string, operation: () => Promi
 
 // ─── Upsert operations ────────────────────────────────────────────────────────
 
+/**
+ * WHERE clause for `ON CONFLICT ... DO UPDATE` that skips the write when every
+ * listed column already holds the incoming value. Unchanged rows are otherwise
+ * rewritten on every sync pass, leaving dead tuples and TOAST churn behind.
+ */
+function rowChangedCondition(tableName: string, columns: readonly string[]): string {
+  const current = columns.map((column) => `"${tableName}"."${column}"`).join(", ");
+  const incoming = columns.map((column) => `excluded."${column}"`).join(", ");
+  return `(${current}) is distinct from (${incoming})`;
+}
+
+/** Drizzle `setWhere` built from the keys of an upsert `set` object (property names → DB column names). */
+function drizzleRowChangedCondition(table: PgTable, keys: string[]): SQL {
+  const columns = getTableColumns(table) as Record<string, { name: string }>;
+  return drizzleSql.raw(rowChangedCondition(getTableName(table), keys.map((key) => columns[key].name)));
+}
+
 export async function upsertSpace(db: SyncDb, space: SnapshotSpace): Promise<void> {
   const s = sanitizeValue(space);
   const values = {
@@ -233,8 +251,13 @@ export async function upsertSpace(db: SyncDb, space: SnapshotSpace): Promise<voi
     updatedAt: drizzleSql`now()`,
   };
 
+  const { updatedAt: _updatedAt, ...comparedValues } = values;
   await withDatabaseRetry(`upsertSpace(${s.id})`, () =>
-    db.insert(snapshotSpaces).values({ id: s.id, ...values }).onConflictDoUpdate({ target: snapshotSpaces.id, set: values })
+    db.insert(snapshotSpaces).values({ id: s.id, ...values }).onConflictDoUpdate({
+      target: snapshotSpaces.id,
+      set: values,
+      setWhere: drizzleRowChangedCondition(snapshotSpaces, Object.keys(comparedValues)),
+    })
   );
 }
 
@@ -278,8 +301,13 @@ export async function upsertProposal(db: SyncDb, proposal: SnapshotProposal): Pr
     syncedAt: drizzleSql`now()`,
   };
 
+  const { syncedAt: _syncedAt, ...comparedValues } = values;
   await withDatabaseRetry(`upsertProposal(${p.id})`, () =>
-    db.insert(snapshotProposals).values({ id: p.id, ...values }).onConflictDoUpdate({ target: snapshotProposals.id, set: values })
+    db.insert(snapshotProposals).values({ id: p.id, ...values }).onConflictDoUpdate({
+      target: snapshotProposals.id,
+      set: values,
+      setWhere: drizzleRowChangedCondition(snapshotProposals, Object.keys(comparedValues)),
+    })
   );
 }
 
@@ -369,8 +397,8 @@ export async function upsertProposalsBatch(
     }
 
     // Build SET clause dynamically: "col = EXCLUDED.col" for every column
-    const setClause = BATCH_COLUMNS
-      .filter((col) => col !== "id") // skip PK
+    const updateColumns = BATCH_COLUMNS.filter((col) => col !== "id"); // skip PK
+    const setClause = updateColumns
       .map((col) => `${col} = EXCLUDED.${col}`)
       .join(", ");
 
@@ -378,6 +406,7 @@ export async function upsertProposalsBatch(
       INSERT INTO snapshot_proposals (${BATCH_COLUMNS.join(", ")})
       VALUES ${valuePlaceholders.join(", ")}
       ON CONFLICT (id) DO UPDATE SET ${setClause}
+      WHERE ${rowChangedCondition("snapshot_proposals", updateColumns)}
     `;
 
     const sql = neon(databaseUrl);
@@ -412,6 +441,7 @@ export async function refreshSpaceProposalCounts(db: SyncDb, spaceIds: string[])
           group by ${snapshotProposals.spaceId}
         ) subq
         where ${snapshotSpaces.id} = subq.sid
+          and ${snapshotSpaces.proposalCount} is distinct from subq.count
       `
     )
   );
