@@ -59,8 +59,12 @@ Developer reference for AI agents and contributors working in this repository.
 | `DEEPSEEK_BASE_URL` | No | DeepSeek base URL (default: `https://api.deepseek.com`) |
 | `DEEPSEEK_MODEL` | No | DeepSeek model ID (default: `deepseek-chat`) |
 | `THEME_GENERATE_MIN_INTERVAL_MS` | No | Min milliseconds between `POST /api/themes/generate` calls **per client IP** (default: `5000`). In-memory per Node instance. |
+| `THEME_GENERATE_MAX_PER_MINUTE` | No | Max `POST /api/themes/generate` calls per minute **per Node instance**, across all IPs (default: `20`) |
 | `TALLY_API_KEY` | For Tally sync only | Tally governance API key |
 | `TALLY_API_URL` | No | Tally GraphQL endpoint (default: `https://api.tally.xyz/query`) |
+| `TALLY_MIN_REQUEST_INTERVAL_MS` | No | Minimum spacing between Tally API requests in the sync (default: `1000`) |
+| `REVALIDATE_SECRET` | For cache invalidation | Shared secret for `POST /api/revalidate`; set on Vercel and on the sync host. The endpoint returns `503` when unset |
+| `NEXT_PUBLIC_BASE_URL` | For cache invalidation | Public site URL the sync scripts call to revalidate the data cache (e.g. `https://undertide.xyz`) |
 
 `DATABASE_URL_UNPOOLED` is preferred over `DATABASE_URL` for all scripts and migrations because pooled pgBouncer connections cause DDL hangs with drizzle-kit.
 
@@ -82,14 +86,25 @@ Copy `.env.example` to `.env` to get started.
 | `db:studio` | `drizzle-kit studio --config drizzle.config.ts` |
 | `db:check` | `drizzle-kit check --config drizzle.config.ts` |
 | `sync:snapshot` | `npx tsx scripts/sync-snapshot.ts` |
-| `sync:snapshot:full` | `npx tsx scripts/sync-snapshot.ts --full` |
+| `sync:snapshot:spaces` | `npx tsx scripts/sync-snapshot-spaces.ts` (cron: every 30 min) |
+| `sync:snapshot:proposals` | `npx tsx scripts/sync-snapshot-proposals.ts` (cron: every 15 min with `--from-db`) |
+| `sync:snapshot:backfill` | `npx tsx scripts/sync-snapshot-backfill.ts` |
 | `sync:tally` | `npx tsx scripts/sync-tally.ts` |
 | `sync:tally:full` | `npx tsx scripts/sync-tally.ts --full` |
+| `sync:tally:backfill` | `npx tsx scripts/sync-tally.ts --backfill` |
 | `link:protocols` | `npx tsx scripts/link-governance-protocols.ts` |
 | `backfill:space-proposal-count` | `npx tsx scripts/backfill-space-proposal-count.ts` |
 | `backfill:space-avatar` | `npx tsx scripts/backfill-space-avatar.ts` |
+| `import:proposal-translations` | `npx tsx scripts/import-proposal-translations.ts` |
 | `translate:proposals` | `npx tsx scripts/translate-proposals.ts` |
+| `translate:spaces` | `npx tsx scripts/translate-spaces.ts` |
 | `list:retranslate-candidates` | `npx tsx scripts/list-retranslate-candidates.ts` |
+| `check:sync:health` | `npx tsx scripts/check-sync-health.ts` |
+| `example:*` | API usage examples and benchmarks under `examples/` |
+
+The production schedule lives in `scripts/crontab.example` / `scripts/crontab.mac`.
+
+**Overlapping runs:** `runSync` (in `scripts/sync-snapshot-shared.ts`) skips a run when another run of the same entity type is still `running`, and marks runs with no finish recorded after 6 hours as `failed` (`abandoned: no finish recorded`).
 
 > **Do not use `pnpm db:migrate`** (drizzle-kit's migrate command) for routine migrations — it uses WebSocket mode and can hang against Neon. Use `npx tsx scripts/db-migrate.ts` instead (see below).
 
@@ -180,7 +195,7 @@ Syncs spaces and proposals from the Snapshot GraphQL API (`https://hub.snapshot.
 pnpm sync:snapshot
 
 # Full resync from scratch
-pnpm sync:snapshot:full
+npx tsx scripts/sync-snapshot.ts --full
 
 # Sync only one entity type
 npx tsx scripts/sync-snapshot.ts --spaces-only
@@ -431,7 +446,9 @@ Returns whether server-side AI theme generation is available.
 
 Generates a **themed.js** token theme from a natural-language `prompt` using DeepSeek. Requires `DEEPSEEK_API_KEY`. Max prompt length: 800 characters.
 
-**Rate limit:** one successful admission per client IP per `THEME_GENERATE_MIN_INTERVAL_MS` (default 5000 ms). Uses `X-Forwarded-For` / `X-Real-IP` when present. Exceeding returns `429` with `{ error, retryAfterSec }` and `Retry-After` header. Limiter state is in-memory (resets per server process; not shared across serverless instances).
+**Rate limit:** one successful admission per client IP per `THEME_GENERATE_MIN_INTERVAL_MS` (default 5000 ms), plus at most `THEME_GENERATE_MAX_PER_MINUTE` (default 20) admissions per minute per instance across all IPs. The client IP comes from `X-Real-IP`, then `X-Vercel-Forwarded-For`, then the last `X-Forwarded-For` hop (headers set by the proxy, not the client). Exceeding returns `429` with `{ error, retryAfterSec }` and `Retry-After` header. Limiter state is in-memory (resets per server process; not shared across serverless instances).
+
+**Output sanitizing:** `lib/theme-sanitize.ts` replaces font size/weight, line height, spacing and transition tokens that are not plain CSS values with themed.js defaults before the theme is returned (themed.js does not validate these).
 
 | Body field | Type | Description |
 |---|---|---|
@@ -440,6 +457,16 @@ Generates a **themed.js** token theme from a natural-language `prompt` using Dee
 Returns `{ data: Theme }` (themed.js theme object). Errors: `400` (bad/missing prompt), `429` (rate limited), `503` (not configured), `502` (generic message; details logged server-side only).
 
 **Audit log:** each successful generation prints one JSON line to stdout prefixed with `[theme_generate]` (`kind`, `at`, `prompt`, `clientIp`, truncated `userAgent`, `theme`) for ops / tuning reference. Not persisted in the database.
+
+---
+
+### `POST /api/revalidate`
+
+Purges the Next.js data cache for one tag (`spaces`, `proposals`, `translations`, `governance`, `snapshot`, `tally`, `sync`). Requires header `x-revalidate-secret: $REVALIDATE_SECRET` (compared in constant time); returns `403` on mismatch and `503` when `REVALIDATE_SECRET` is unset. Called by the sync scripts via `revalidateDataCache()`, which needs `NEXT_PUBLIC_BASE_URL` and `REVALIDATE_SECRET`.
+
+| Param | Type | Description |
+|---|---|---|
+| `tag` | `string` | Cache tag to revalidate |
 
 ---
 
@@ -686,13 +713,21 @@ All DB access goes through this file. It handles SQL filtering, joining, and map
 | `getProposalTranslations(proposalId, locales?)` | `Promise<ProposalTranslation[]>` |
 | `getProposalTranslation(proposalId, locale)` | `Promise<ProposalTranslation \| null>` |
 | `listSnapshotSyncStates(entityTypes?)` | `Promise<SnapshotSyncState[]>` |
+| `listTallySyncStates(entityTypes?)` | `Promise<SnapshotSyncState[]>` |
+| `listTallyOrganizations(query?)` / `getTallyOrganization(idOrSlug)` | `Promise<TallyOrganization[]>` / `Promise<TallyOrganization \| null>` |
+| `listTallyProposals(query?)` / `listTallyOrganizationProposals(idOrSlug, query?)` / `getTallyProposal(id)` | `Promise<TallyProposal[]>` / `Promise<TallyProposal \| null>` |
+| `getPlatformStats()` | `Promise<PlatformStats>` |
+
+`getSpaceBySlug` also takes an optional `locale`. Protocol (aggregate) queries live in `lib/governance/repository.ts`.
+
+**Input normalization:** search terms are trimmed and capped at 100 characters, and `%` / `_` are escaped before `ILIKE` (`lib/search.ts`). Translation locales outside `en`/`zh`/`ja`/`ko` are treated as English. External links from Snapshot/Tally (`website`, `forum`, `discussion`, `discussionUrl`) are dropped unless they are `http(s)` URLs (`safeExternalUrl` in `lib/utils.ts`).
 
 **SQL pushdown:** `spaceSlug`, `status`, `q` (ilike on title/space name), locale-aware translation joins (including `translatedOnly`), and time-ordered `LIMIT` are pushed to SQL `WHERE`/`JOIN`/`ORDER BY`. Heat, importance sort, and category filter are applied in-memory on a capped result set.
 
 **Computed fields:**
 - `heat` = `max(10, min(99, round(log10(scoresTotal + 10) * 24 + log10(memberCount + 10) * 12)))`
 - `activityScore` = `max(8, min(99, round(log10(followersCount + 10) * 20 + log10(proposalCount + 1) * 18)))`
-- `status` mapping: `active` → `Active`, `pending` → `Upcoming`, `closed` → `Closed`, anything else → `Executed`
+- `status` mapping: `active` → `Active`, `pending` → `Upcoming`, `closed` → `Closed`, anything else → `Executed`. A stored `active`/`pending` row whose `end_ts` has passed maps to `Closed` until the proposals sync (stage 4, stale-active refresh) picks up Snapshot's final state
 
 ---
 
@@ -803,14 +838,17 @@ Cache tags enable fine-grained invalidation via `revalidateTag()`.
 
 ### API route HTTP caching
 
-All `/api/*` route handlers set:
+List and detail routes set:
 ```
-Cache-Control: public, s-maxage=<N>, stale-while-revalidate=<3xN>
+Cache-Control: public, s-maxage=<N>, stale-while-revalidate=<M>
 ```
 
-- `/api/snapshot/spaces`: s-maxage=120s
-- `/api/snapshot/proposals`: s-maxage=60s
-- `/api/proposals/[id]` and `/api/snapshot/proposals/[id]`: s-maxage=600s (stale-while-revalidate=1800s)
+- `/api/snapshot/spaces`, `/api/spaces`, `/api/tally/organizations`: s-maxage=120s
+- `/api/snapshot/proposals`, `/api/proposals`, `/api/tally/proposals`: s-maxage=60s
+- `/api/spaces/[slug]`: s-maxage=300s
+- `/api/proposals/[id]`, `/api/snapshot/proposals/[id]`, `/api/proposals/[id]/translations`: s-maxage=600s (stale-while-revalidate=1800s)
+
+Sync-state, protocol and remaining detail routes send no `Cache-Control`; protocol data is cached server-side with `unstable_cache` (protocols 300s, protocol proposals 120s, tag `governance`). All public GET routes are wrapped in `safeApiHandler` and return CORS headers (`lib/api-cors.ts`).
 
 Client components fetch from `/api/snapshot/*`. These requests bypass `unstable_cache` and rely on Vercel's Edge Network CDN to absorb repeated requests.
 
@@ -830,11 +868,13 @@ revalidateTag("proposals"); // busts all proposal caches
 
 ### Database error logging
 
-All `fetch*` functions in `lib/repository.ts` wrap their DB queries in try/catch and call `logDbError(context, error)` before returning empty fallback values. This ensures database errors are visible in Vercel Function logs rather than silently swallowed.
+**`logDbError(context, error)`** (in `lib/db.ts`) logs to `console.error` with the function name and first 3 lines of stack trace.
 
-**`logDbError(context, error)`** (defined at top of `lib/repository.ts`) logs to `console.error` with the function name and first 3 lines of stack trace.
+Fetchers that run inside `unstable_cache` (spaces, space detail, proposal list/detail, platform stats, and the protocol queries in `lib/governance/repository.ts`) **throw** on DB errors. Their public wrappers call them through `withDbFallback(context, read, fallback)` (in `lib/db.ts`), which logs and returns the fallback **outside** the cache. Do not catch-and-return-empty inside a cached fetcher: `unstable_cache` would store the empty result as real data for the whole TTL (e.g. a proposal page 404ing for 10 minutes after one Neon hiccup).
+
+Uncached fetchers (translations, sync states, Tally) still catch, log and return empty values.
 
 ### Graceful degradation
 
-- Most fetch functions return `[]` or `null` on error → UI shows empty state, never crashes
-- `fetchPlatformStats` has a two-tier fallback: tries `platform_stats` table → falls through to live aggregate queries → returns `emptyPlatformStats()` if both fail
+- Public repository functions return `[]` or `null` on error → UI shows empty state, never crashes
+- `fetchPlatformStats` tries the `platform_stats` table first and falls through to live aggregate queries; if both fail, `getPlatformStats()` returns `emptyPlatformStats()`
